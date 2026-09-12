@@ -17,9 +17,11 @@ export async function startServer() {
   const server = createRobotServer({
     config: configFromEnv(process.env), production: process.env.NODE_ENV === 'production',
   });
-  try { await server.listen(8787); } catch {
+  const port = Number(process.env.PORT) || 8787;
+  const host = process.env.HOST || '0.0.0.0';
+  try { await server.listen(port, host); } catch {
     await server.close();
-    throw new Error('Unable to start HTTP server on 127.0.0.1:8787.');
+    throw new Error(`Unable to start HTTP server on ${host}:${port}.`);
   }
   return server;
 }
@@ -27,7 +29,7 @@ export async function startServer() {
 // Imports in tests have no environment, socket or signal-handler side effects.
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   void startServer().then((server) => {
-    console.log('Sales robot demo: http://127.0.0.1:8787');
+    console.log('Sales robot demo backend: http://0.0.0.0:8787 (or http://localhost:8787)');
     const stop = (): void => {
       process.removeListener('SIGINT', stop);
       process.removeListener('SIGTERM', stop);
