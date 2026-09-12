@@ -76,6 +76,30 @@ test("device/session authorization, origin and host boundaries are enforced", as
   assert.equal(wrongOrigin.status, 403);
 });
 
+test("trusted cross-origin kiosk clients can read authorized request errors", async (t) => {
+  const core = new Orchestrator({
+    mediaProvider: { name: "unused", async generate() { throw new Error("No media requested"); } },
+  });
+  t.after(() => core.dispose());
+  const origin = "http://127.0.0.1:3200";
+  const app = createApp({
+    orchestrator: core, config: readConfig({ ALLOWED_ORIGINS: origin }), deviceToken, log() {},
+  });
+  const session = core.createSession();
+  const response = await app.request(`http://127.0.0.1:3101/v1/sessions/${session.sessionId}/commands/create_ad_brief`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.sessionToken}`, origin, "content-type": "application/json" },
+    body: JSON.stringify({ productId: "demo-car" }),
+  });
+  assert.equal(response.status, 403);
+  assert.equal(response.headers.get("access-control-allow-origin"), origin);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal((await response.json()).error.code, "CONSENT_REQUIRED");
+  const denied = await app.request("http://127.0.0.1:3101/healthz", { headers: { origin: "https://untrusted.invalid" } });
+  assert.equal(denied.status, 403);
+  assert.equal(denied.headers.get("access-control-allow-origin"), null);
+});
+
 test("oversized/malformed inputs fail without leaking internal data", async (t) => {
   const { core, request, create } = await setup();
   t.after(() => core.dispose());
@@ -126,10 +150,18 @@ test("consent gates uploads and revoked sessions cannot fetch media", async (t) 
   const fetched = await request(`${path}/assets/${assetId}`, { token: session.sessionToken });
   assert.equal(fetched.status, 200);
   assert.deepEqual(Buffer.from(await fetched.arrayBuffer()), png);
+  const origin = "http://127.0.0.1:3101";
+  const corsAsset = await request(`${path}/assets/${assetId}`, {
+    token: session.sessionToken, headers: { origin },
+  });
+  assert.equal(corsAsset.status, 200);
+  assert.equal(corsAsset.headers.get("access-control-allow-origin"), origin);
+  assert.equal(corsAsset.headers.get("x-content-type-options"), "nosniff");
   const partial = await request(`${path}/assets/${assetId}`, {
-    token: session.sessionToken, headers: { range: "bytes=0-7" },
+    token: session.sessionToken, headers: { range: "bytes=0-7", origin },
   });
   assert.equal(partial.status, 206);
+  assert.equal(partial.headers.get("access-control-allow-origin"), origin);
   assert.equal((await partial.arrayBuffer()).byteLength, 8);
   const suffix = await request(`${path}/assets/${assetId}`, {
     token: session.sessionToken, headers: { range: "bytes=-8" },

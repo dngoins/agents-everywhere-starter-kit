@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - "FinalProject/**"
+      - "MoviePart/**"
       - ".github/workflows/magicpitch-ci.yml"
   push:
     branches: [main]
     paths:
       - "FinalProject/**"
+      - "MoviePart/**"
       - ".github/workflows/magicpitch-ci.yml"
   workflow_dispatch:
 
@@ -73,3 +75,29 @@ jobs:
             FinalProject/artifacts/magicpitch-demo.sha256
           if-no-files-found: error
           retention-days: 7
+
+  moviepart-integration:
+    name: Kiosk and media integration
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Set up pinned Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24.11.0"
+          cache: npm
+          cache-dependency-path: |
+            FinalProject/package-lock.json
+            MoviePart/package-lock.json
+      - name: Pin npm
+        run: npm install --global npm@11.6.2 --ignore-scripts
+      - name: Restore orchestrator dependencies
+        run: npm --prefix FinalProject ci
+      - name: Restore MoviePart dependencies
+        run: npm --prefix MoviePart ci
+      - name: Exercise kiosk and media HTTP boundary without provider credentials
+        run: npm --prefix FinalProject run test:moviepart

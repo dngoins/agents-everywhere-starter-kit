@@ -96,14 +96,13 @@ export function createApp(options: {
 
   app.onError((error, context) => {
     const requestId = context.get("requestId");
-    const status = error instanceof ApiError ? error.status : error instanceof ProviderFailure ? 502 : error instanceof z.ZodError ? 400 : 500;
+    const requestedStatus = error instanceof ApiError ? error.status : error instanceof ProviderFailure ? 502 : error instanceof z.ZodError ? 400 : 500;
+    const errorStatuses = [400, 401, 403, 404, 405, 409, 410, 413, 415, 422, 429, 500, 502, 503, 504] as const;
+    const status = errorStatuses.find((candidate) => candidate === requestedStatus) ?? 500;
     const code = error instanceof ApiError || error instanceof ProviderFailure ? error.code : error instanceof z.ZodError ? "INVALID_INPUT" : "INTERNAL_ERROR";
     const message = error instanceof ApiError || error instanceof ProviderFailure ? error.message : error instanceof z.ZodError ? "Input does not match the versioned contract." : "The request failed. Use the request ID to inspect server diagnostics.";
     log({ event: "request_failed", requestId, status, code });
-    return new Response(JSON.stringify({ error: { code, message, requestId } }), {
-      status,
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Request-Id": requestId },
-    });
+    return context.json({ error: { code, message, requestId } }, status);
   });
 
   app.get("/healthz", (context) => context.json({ status: "ok" }));
@@ -187,7 +186,7 @@ export function createApp(options: {
       "Content-Length": String(data.byteLength),
     });
     const range = context.req.header("range");
-    if (!range) return new Response(Buffer.from(data), { headers });
+    if (!range) return context.newResponse(Buffer.from(data), { headers });
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
     const startText = match?.[1];
     const endText = match?.[2];
@@ -202,12 +201,12 @@ export function createApp(options: {
         (startText === "" && endText === "0")) {
       headers.set("Content-Range", `bytes */${data.byteLength}`);
       headers.set("Content-Length", "0");
-      return new Response(null, { status: 416, headers });
+      return context.newResponse(null, { status: 416, headers });
     }
     end = Math.min(end, data.byteLength - 1);
     headers.set("Content-Range", `bytes ${start}-${end}/${data.byteLength}`);
     headers.set("Content-Length", String(end - start + 1));
-    return new Response(Buffer.from(data.subarray(start, end + 1)), { status: 206, headers });
+    return context.newResponse(Buffer.from(data.subarray(start, end + 1)), { status: 206, headers });
   });
   app.delete("/v1/sessions/:id", async (context) => {
     await orchestrator.deleteSession(context.req.param("id"));

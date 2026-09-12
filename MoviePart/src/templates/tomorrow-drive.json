@@ -1,0 +1,16 @@
+{
+  "id": "TOMORROW_DRIVE",
+  "version": 1,
+  "name": "Tomorrow Drive",
+  "description": "An ordinary departure. An extraordinary destination.",
+  "tone": "Wonder, optimism and an original aspirational future, not a recognizable film recreation.",
+  "camera": "Intimate approach, interior activation, expansive transition, warm destination reveal.",
+  "worldTransition": "Present-day world explicitly transforms during shot three into a dream destination in shot four.",
+  "beats": [
+    "Customer approaches the exact selected car in the present world.",
+    "Customer enters and activates the vehicle; show its real interior.",
+    "The unchanged car travels through an original cinematic transition toward an imagined future.",
+    "Customer and the same car arrive at a personalized aspirational environment."
+  ],
+  "sound": "Airy atmosphere, subtle activation cue, transition rise and an optimistic musical resolve."
+}

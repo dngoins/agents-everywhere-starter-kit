@@ -20,7 +20,9 @@
     "package:demo": "node scripts/package.mjs",
     "interfaces:export": "node --import tsx scripts/export-interfaces.mjs",
     "interfaces:check": "node --import tsx scripts/export-interfaces.mjs --check",
-    "interfaces:package": "node --import tsx scripts/export-interfaces.mjs --check --archive"
+    "interfaces:package": "node --import tsx scripts/export-interfaces.mjs --check --archive",
+    "dev:kiosk": "node scripts/dev-kiosk.mjs",
+    "test:moviepart": "node --import ./scripts/offline-network-guard.mjs --import tsx --test integration-tests/moviepart.test.mjs"
   },
   "dependencies": {
     "@hono/node-server": "1.19.17",

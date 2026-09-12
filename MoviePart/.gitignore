@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.env*
+!.env.example
+.movie-data/
+.media-smoke-local/
+.media-tests-*/
+.renderer-test*/
+demo-data/private/
+*.tsbuildinfo
+coverage/
+*.log
