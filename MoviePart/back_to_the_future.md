@@ -1,173 +1,207 @@
-# Car Ad Story Template Kit
+# Back to the Future — 30-Second Tesla Ad — Story Template
 
-A reusable set of pieces for scripting "customer-as-hero" car ads that feel like a famous movie moment. Built to be filled in by software: anything in `{CURLY_BRACES}` is a variable you swap per piece.
+A shot-by-shot template for generating a personalized 30-second car ad where **our
+customer is the hero** of a *Back to the Future*–style moment. The coding agent reads
+this file together with `person.json` and `car.json` and produces the video, one shot at
+a time, then stitches them in order.
 
-There is no single secret "movie template." What you're after is two public things combined:
-
-1. **A story beat sheet** — the skeleton screenwriters use.
-2. **A shot prompt template** — the format an AI video tool wants.
-
-This kit gives you both, plus how to drop the customer in as the hero.
-
----
-
-## PART 1 — The story skeletons (beat sheets)
-
-These are the structures behind almost every "ordinary person → impossible thrill → transformed" ad. Pick one skeleton per piece. The first is the workhorse for a short ad; the other two are the famous full versions it's cut down from, in case you want more beats for a longer piece.
-
-### A. The 6-beat short-ad arc (recommended default)
-
-Every beat is one shot or a short cluster of shots. Sized for ~15–45 seconds.
-
-| # | Beat | What happens | Job of the beat |
-|---|------|--------------|-----------------|
-| 1 | **Ordinary moment** | Customer in a mundane, relatable place — stuck in traffic, a dull errand, an ordinary street. | Make the customer recognize themselves. |
-| 2 | **The spark** | Something shifts. The car appears, or a light, sound, or gesture signals that this is about to stop being ordinary. | Create the "wait, what?" |
-| 3 | **Crossing over** | The customer gets in / touches the ignition / grips the wheel. Point of no return. | Hand the customer the power. |
-| 4 | **The impossible** | The signature magic moment — the launch, the time-jump, the transformation, the scene bending around them. This is your "gasp." | Deliver the wow. This is what people remember. |
-| 5 | **Mastery** | Hero shot: customer fully in control, calm and powerful, the world responding to them. | Let the customer feel like the hero. |
-| 6 | **New world / payoff** | Arrival somewhere transformed. Reveal the car cleanly, land the tagline/logo. | Tie the feeling to the product. |
-
-### B. The Hero's Journey (condensed — for longer pieces)
-
-From Joseph Campbell / Christopher Vogler's *The Writer's Journey*. Full version is 12 stages; for an ad, use these mapped to the same 6 beats:
-
-1. Ordinary World → beat 1
-2. Call to Adventure + Refusal → beat 2
-3. Crossing the Threshold → beat 3
-4. Tests / Ordeal → beat 4 (the thrill *is* the ordeal)
-5. Reward + Road Back → beat 5
-6. Return Transformed → beat 6
-
-### C. "Save the Cat" beats (condensed — Blake Snyder)
-
-Snyder's beat sheet is 15 beats for a feature. The ones worth stealing for an ad:
-
-- **Opening image** — the "before" (your beat 1).
-- **Catalyst** — the thing that changes everything (your beat 2).
-- **Break into Two** — commit to the new world (your beat 3).
-- **Fun and Games** — "the promise of the premise," i.e. the cool stuff people came for (your beat 4). *This is the heart of an ad.*
-- **Finale** — mastery and resolution (beats 5–6).
-- **Final image** — the "after" that mirrors the opening (your beat 6).
-
-**Where to go deeper:** *Save the Cat!* by Blake Snyder; *The Writer's Journey* by Christopher Vogler. Both are the actual "templates" filmmakers learn from — they're just books, not a hidden file.
+We're borrowing the *feeling* of the movie — the ordinary-life-to-impossible-leap arc —
+not its specifics. No DeLorean, no characters, no logos from the film. The magic is our
+Tesla's silent, instant launch.
 
 ---
 
-## PART 2 — Putting the customer in as the hero
+## How to use this file (for the coding agent)
 
-This is the "make it magic for him" part. Three ways to do it — pick per campaign:
+1. Load `person.json` — this is our **hero**. Render the same person in every shot, using
+   its `reference_images` as the identity anchor and its fields for face, hair, skin tone,
+   build, and wardrobe. The wardrobe stays identical across all shots.
+2. Load `car.json` — this is our **hero car**. Render the same Tesla in every shot, using
+   its `reference_images` and fields. Keep one color throughout (from `car.exterior.color`).
+3. Generate each shot below as its own clip at the stated duration, then concatenate them
+   in order 1 → 8. Total runtime is 30 seconds.
+4. Follow the **Consistency rules** and **Audio & tagline** sections exactly.
 
-- **`{HERO_MODE} = POV`** — Shoot from the customer's own eyes (first person). No face needed, works in any tool, and the viewer instantly *is* the driver. Safest and most universal.
-- **`{HERO_MODE} = LIKENESS`** — The customer's real face is the driver. Most personal, but check that your chosen tool holds a consistent face across shots and that you have the customer's consent to use their image.
-- **`{HERO_MODE} = PERSONALIZED`** — Generic driver, but the customer's name, city, or their own car model appears in the scene (a license plate, a sign, a line of narration). Lets one template personalize to thousands of customers without needing their face.
-
-Small legal note so you don't get surprised: emulate the *feeling and structure* of a famous scene, not its protected specifics. A time-jump feels like Back to the Future without recreating the exact DeLorean time machine, its light-trails design, or any characters; a street race feels like Fast & Furious without brand logos or lifted footage. Structure and mood are free to borrow — specific iconic vehicles, characters, and logos are not.
+Tokens like `{{person.hair.color}}` or `{{car.exterior.color}}` mean "pull this value from
+the JSON." `{{HERO}}` = the person from `person.json`. `{{CAR}}` = the Tesla from `car.json`.
 
 ---
 
-## PART 3 — The shot prompt template (for the AI video tool)
+## Global settings
 
-One block per shot. Most tools (Sora, Veo, Runway, Kling) read the same ingredients; fill every field and you get consistent results. Keep each shot to a single continuous action — don't try to fit two beats in one clip.
-
-```
-SHOT {N} — {BEAT_NAME} — duration {SECONDS}s — aspect {ASPECT_RATIO}
-
-SUBJECT:    {WHO_AND_WHAT_THEY_LOOK_LIKE}   // e.g. hero driver, {HERO_MODE}
-ACTION:     {WHAT_HAPPENS_IN_ONE_SENTENCE}
-CAMERA:     {ANGLE} + {MOVEMENT} + {LENS}   // e.g. low angle, slow push-in, 35mm
-SETTING:    {WHERE}, {TIME_OF_DAY}
-LIGHTING:   {LIGHT_QUALITY_AND_COLOR}
-MOOD:       {EMOTION_ONE_OR_TWO_WORDS}
-STYLE:      {FILM_LOOK}                      // e.g. cinematic, warm film grain, anamorphic
-SOUND:      {AUDIO_OR_MUSIC_CUE}             // if the tool supports audio
-CAR:        {CAR_MAKE_MODEL_COLOR_DETAILS}
+```yaml
+runtime_seconds: 30
+aspect_ratio: "9:16"          # vertical for social; switch to "16:9" for web/TV
+hero: person.json             # the customer, on screen as the hero
+car: car.json                 # Tesla Model 3 Performance
+look: "cinematic, warm, filmic; slight grain; anamorphic flares in the leap"
+arc: "ordinary world -> impossible leap -> mastery -> return transformed"
+palette: "starts drab and grey; blooms to warm gold after the leap"
 ```
 
-**Field cheat-sheet (so your software can pick good values):**
-
-- **CAMERA angle:** eye-level, low angle (makes hero powerful), high angle, over-the-shoulder, POV.
-- **CAMERA movement:** static, slow push-in, pull-back reveal, tracking/follow, orbit, whip-pan, crane up.
-- **LENS:** wide (24–35mm, epic/spacious), normal (50mm), telephoto (85mm+, intimate/compressed).
-- **LIGHTING:** golden hour, blue hour, harsh midday, neon night, backlit rim light, moody low-key.
-- **STYLE:** cinematic, film grain, anamorphic flares, high-contrast, desaturated, hyper-real.
-
 ---
 
-## PART 4 — Full worked example (6 shots, wonder/BTTF-style, POV hero)
+## The story — 8 shots
 
-Variables used: `{CAR} = midnight-blue electric coupe`, `{HERO_MODE} = POV`, `{ASPECT_RATIO} = 9:16`.
+Timing adds up to 30 seconds. Each shot's `SUBJECT` is always `{{HERO}}` (same face, same
+wardrobe) and, where present, `{{CAR}}` (same Tesla, same color).
+
+### Shot 1 — Ordinary World — 4s
+The "before." Our hero in a flat, everyday moment — nothing special yet. It has to feel
+like a real, ordinary day so the leap lands harder.
 
 ```
-SHOT 1 — Ordinary moment — 3s — aspect 9:16
-SUBJECT:  driver's hands on the wheel, POV, sitting still
-ACTION:   stuck at a red light on a grey ordinary street, rain starting
-CAMERA:   eye-level POV, static, 35mm
-SETTING:  drab city intersection, dusk
-LIGHTING: flat overcast grey
-MOOD:     bored, waiting
-STYLE:    cinematic, slight film grain
-SOUND:    dull city hum, a single raindrop
-CAR:      midnight-blue electric coupe interior
+SUBJECT:  {{HERO}} — full description from person.json, {{person.wardrobe.*}}
+ACTION:   walking up to an ordinary storefront at dusk, a little tired, ordinary day
+CAMERA:   eye-level medium shot, slow follow behind, 35mm
+SETTING:  plain street / store entrance, overcast grey dusk
+LIGHTING: flat, cool, grey
+MOOD:     ordinary, unremarkable
+STYLE:    cinematic, subtle grain
+SOUND:    muted city hum
+```
 
-SHOT 2 — The spark — 3s — aspect 9:16
-SUBJECT:  driver's hands, POV
-ACTION:   the dashboard glows to life, a soft pulse of light runs across it
-CAMERA:   POV, slow push-in toward the glowing dash, 35mm
-SETTING:  same intersection, dusk
-LIGHTING: warm light rising from the dash against the grey
+### Shot 2 — Call to Adventure — 3s
+Something shifts. The {{CAR}} wakes silently nearby — screen glow, a soft pulse of light.
+The signal that this moment is about to stop being ordinary.
+
+```
+SUBJECT:  {{HERO}} turning toward {{CAR}}
+ACTION:   the Tesla wakes silently — headlights and screen glow bloom; hero notices
+CAMERA:   over-the-shoulder from behind hero toward the car, slow push-in, 35mm
+SETTING:  same street, the car parked a few steps away
+LIGHTING: warm light rising from the car against the grey
 MOOD:     curiosity, "wait, what?"
 STYLE:    cinematic
-SOUND:    a rising electric tone
+SOUND:    a rising electric tone, near-silent
+```
 
-SHOT 3 — Crossing over — 2s — aspect 9:16
-SUBJECT:  driver's hand, POV
-ACTION:   hand presses the start button, decisive
-CAMERA:   POV close-up, static, 50mm
-SETTING:  car interior
-LIGHTING: warm glow intensifying
-MOOD:     commitment
-SOUND:    deep confident whoosh
+### Shot 3 — Refusal → Meeting the Mentor — 3s
+A half-second of hesitation, then the car itself becomes the guide — the door presents,
+the interior lights invite. The car is our mentor here, not a person.
 
-SHOT 4 — The impossible — 5s — aspect 9:16
-SUBJECT:  driver POV
-ACTION:   the grey street stretches and blurs into streaks of light as the world bends forward around the car
-CAMERA:   POV, fast push-in, wide 24mm
+```
+SUBJECT:  {{HERO}} beside {{CAR}}, {{CAR}} interior glowing
+ACTION:   hero pauses, then the door opens/handle presents; interior lights invite them in
+CAMERA:   medium two-shot of hero and open door, static, 50mm
+SETTING:  at the driver's door
+LIGHTING: warm interior glow spilling onto the hero's face
+MOOD:     invitation, quiet pull
+STYLE:    cinematic
+SOUND:    soft welcoming chime, low hum
+```
+
+### Shot 4 — Crossing the Threshold — 3s
+The point of no return: our hero is in the seat, hand on the wheel. They commit. The
+present starts to bend at the edges.
+
+```
+SUBJECT:  {{HERO}} in the driver's seat of {{CAR}}, {{car.interior.*}}
+ACTION:   hero settles in, both hands on the wheel, a decisive breath; foot presses
+CAMERA:   from the passenger side, slow arc toward the hero's face, 50mm
+SETTING:  {{CAR}} interior — minimalist dash, center screen glowing
+LIGHTING: warm screen light on the hero, world outside going soft
+MOOD:     commitment, anticipation
+STYLE:    cinematic
+SOUND:    deep confident whoosh building
+```
+
+### Shot 5 — The Ordeal (the leap) — 7s
+Our signature impossible moment. The {{CAR}}'s silent, instant launch tears the dull world
+into streaks of light and folds it forward around the hero. This is the gasp — it gets the
+most seconds on purpose.
+*If your video tool caps clip length below 7s, split this into two clips of ~3.5s each
+(build, then break-through) and concatenate them.*
+
+```
+SUBJECT:  {{HERO}} at the wheel of {{CAR}}, POV alternating with hero's face
+ACTION:   silent instant-torque launch; the grey street stretches into streaks of light and
+          the world bends forward around the car; hero's face lit with awe
+CAMERA:   fast push-in on POV, cut to hero's face, wide 24mm
 SETTING:  street dissolving into a tunnel of light
-LIGHTING: brilliant streaking light trails, warm-to-cool
+LIGHTING: brilliant streaking light trails, grey-to-gold
 MOOD:     awe, exhilaration
 STYLE:    cinematic, anamorphic flares
-SOUND:    swelling music, a sonic bloom
+SOUND:    swelling music, a sonic bloom, motor whine — no engine roar
+```
 
-SHOT 5 — Mastery — 4s — aspect 9:16
-SUBJECT:  driver POV, hands calm and steady on the wheel
-ACTION:   the car glides effortlessly, the world now bright and open
-CAMERA:   POV, gentle, 50mm
-SETTING:  a stunning open coastal road, golden hour
+### Shot 6 — The Reward — 4s
+They arrive somewhere transformed — open, beautiful, golden. Hero shot: our customer calm
+and fully in control, the world now responding to them.
+
+```
+SUBJECT:  {{HERO}} driving {{CAR}}, calm and powerful
+ACTION:   the car glides effortlessly into a stunning open landscape; hero relaxed, in control
+CAMERA:   tracking alongside the car, gentle, 50mm; then to hero's confident face
+SETTING:  breathtaking open road at golden hour (coast or mountains)
 LIGHTING: warm golden backlight
-MOOD:     calm power, in control
-SOUND:    music settling into a confident groove
+MOOD:     calm power, arrival
+STYLE:    cinematic
+SOUND:    music settles into a confident groove
+```
 
-SHOT 6 — New world / payoff — 4s — aspect 9:16
-SUBJECT:  the {CAR} seen from outside for the first time
-ACTION:   camera pulls back off the car parked at a breathtaking overlook; clean logo/tagline appears
+### Shot 7 — The Road Back / Resurrection — 3s
+A breath. Our hero eases back, changed — the power now feels natural, theirs.
+
+```
+SUBJECT:  {{HERO}} in {{CAR}}, at ease
+ACTION:   hero eases the car to a stop at a scenic overlook, a small satisfied smile
+CAMERA:   slow dolly toward the hero through the windshield, 50mm
+SETTING:  scenic overlook, golden hour
+LIGHTING: warm, soft
+MOOD:     quiet satisfaction, ownership
+STYLE:    cinematic
+SOUND:    music easing, gentle
+```
+
+### Shot 8 — Return with the Elixir — 3s
+The payoff. We reveal the {{CAR}} cleanly from outside for the first time, and the tagline
+and logo land. The "elixir" our hero brought back *is* the car.
+
+```
+SUBJECT:  {{CAR}} full exterior, {{car.exterior.color}}; hero visible inside or beside it
+ACTION:   camera pulls back off the car at the overlook; clean hero product shot; tagline appears
 CAMERA:   pull-back reveal + slow crane up, wide 24mm
-SETTING:  cliff overlook at golden hour
-LIGHTING: warm cinematic golden hour
-MOOD:     arrival, aspiration
+SETTING:  overlook at golden hour
+LIGHTING: warm cinematic golden hour, clean highlights on the car
+MOOD:     aspiration, arrival
 STYLE:    cinematic, hero product shot
-SOUND:    music resolves, single clean note
-CAR:      midnight-blue electric coupe, full exterior
+SOUND:    music resolves to a single clean note
 ```
 
 ---
 
-## PART 5 — How your software plugs into this
+## Consistency rules (apply to every shot)
 
-For a campaign of several pieces, treat one row = one variable set, and loop:
+- **Same hero, every shot.** Face, hair, skin tone, and build come from `person.json` and
+  its `reference_images`. Do not let the face drift. The wardrobe is identical in all shots.
+- **Same car, every shot.** Model, color, wheels, and front end come from `car.json` and its
+  `reference_images`. One color only — `{{car.exterior.color}}`.
+- **Continuous world.** The look starts drab/grey (shots 1–4), transforms during the leap
+  (shot 5), and stays warm/golden after (shots 6–8). Keep this progression unbroken.
+- **The car is near-silent.** No engine roar anywhere. The leap is a whoosh + motor whine.
 
-**Per-piece variables:** `{SKELETON}` (A/B/C), `{FEELING}` (wonder / adrenaline / blend), `{HERO_MODE}`, `{CAR}`, `{ASPECT_RATIO}`, `{TAGLINE}`, `{SETTING_START}`, `{SETTING_END}`, `{MUSIC_STYLE}`.
+---
 
-**Per-shot variables:** everything in the Part 3 block.
+## Audio & tagline
 
-Pipeline: pick skeleton → generate the 6 beats → expand each beat into a Part-3 shot block using the per-piece variables → hand each block to the AI video tool → stitch the clips. Keeping "one shot = one action" is the single biggest thing that keeps AI clips coherent.
+- **Music:** one continuous cue — quiet and curious at the open, building through the leap,
+  resolving to a clean note at the reveal. No lyrics competing with the moment.
+- **Tagline (shot 8):** `{{TAGLINE}}` — set your line here (e.g. "Your leap starts now.").
+- **Logo (shot 8):** your dealership/brand mark, clean, over the final frame.
+
+---
+
+## Assembly
+
+Generate shots 1 → 8, concatenate in order, confirm total runtime is 30 seconds, and export
+at `{{aspect_ratio}}`. If any shot's person or car drifts from the references, regenerate
+that single shot rather than the whole sequence.
+
+---
+
+## Creative & legal note
+
+We evoke the *feeling* of the famous time-jump — ordinary moment, impossible leap, transformed
+arrival — using our own imagery and our Tesla's real launch. We do not use the film's car
+design, characters, or logos. And we only use a real customer's likeness with their permission.

@@ -424,6 +424,10 @@ export class LiveVoice {
       let result;
       try { result = await abortable(response.json(), signal); } catch {
         this._assert(run);
+        if (!response.ok) {
+          const status = Number.isInteger(response.status) ? ` (HTTP ${response.status})` : '';
+          throw new VoiceFailure(`Voice server request failed${status}. Make sure the local API is running on port 8787.`);
+        }
         throw new VoiceFailure('The voice server returned an invalid response. Check the server and reconnect.');
       }
       this._assert(run);
