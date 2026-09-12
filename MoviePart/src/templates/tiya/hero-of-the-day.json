@@ -1,0 +1,31 @@
+{
+  "template_id": "HERO_OF_THE_DAY",
+  "display_name": "Hero of the Day",
+  "genre": "emotional automotive commercial",
+  "promise": "This car helps you show up for the life and people that matter.",
+  "director_personality": {
+    "tone": ["warm", "human", "emotionally sincere", "quiet confidence"],
+    "avoid": ["melodrama", "generic luxury imagery", "random action", "unearned sentimentality", "copying any real film scene"]
+  },
+  "cinematography": {
+    "pacing": "measured, breathing room, 3-5 second cuts",
+    "camera": "intimate close-ups, hands and small details, quiet car interior, windshield perspective, destination reveal, reaction close-up",
+    "lighting": "naturalistic and warm, soft golden hour or gentle rain light",
+    "style": "cinematic, warm film grain, shallow depth of field",
+    "color_palette": "warm amber, soft cream, muted teal shadows"
+  },
+  "sound": {
+    "music_style": "gentle piano and strings building to a warm swell",
+    "tempo_bpm": 92,
+    "energy_arc": "quiet, decision, movement, swell, resolve"
+  },
+  "personalization_slots": ["pet", "family or friend", "destination", "hobby", "meaningful object"],
+  "beats": [
+    { "beat": "ordinary_moment", "name": "Ordinary moment", "goal": "Customer in a quiet, real moment. We like them immediately.", "default_duration": 3, "camera_hint": "intimate medium close-up, static, 50mm", "sound_hint": "soft room tone", "personalization_slot": "pet", "product_visible": false },
+    { "beat": "the_spark", "name": "The small need", "goal": "Something small but important needs them somewhere. A message, a look, a decision.", "default_duration": 3, "camera_hint": "close-up on hands or face, slow push-in, 50mm", "sound_hint": "a single piano note", "personalization_slot": "family or friend", "product_visible": false },
+    { "beat": "crossing_over", "name": "Grabbing the keys", "goal": "They choose to act. Keys, door, seat, the car wakes gently.", "default_duration": 3, "camera_hint": "side three-quarter tracking as they enter the car, 35mm", "sound_hint": "door close, soft ignition", "personalization_slot": "meaningful object", "product_visible": true },
+    { "beat": "the_impossible", "name": "The journey", "goal": "The drive itself becomes the moment. Weather, light, road. The car carries them.", "default_duration": 5, "camera_hint": "windshield perspective then exterior wide, gentle tracking, 24mm", "sound_hint": "road ambience, music rising", "personalization_slot": "destination", "product_visible": true },
+    { "beat": "mastery", "name": "Arrival", "goal": "They arrive just in time. Someone or something is waiting.", "default_duration": 3, "camera_hint": "medium shot of the arrival, handheld warmth, 50mm", "sound_hint": "music swell, quiet payoff", "personalization_slot": "hobby", "product_visible": true },
+    { "beat": "payoff", "name": "Emotional payoff + hero frame", "goal": "The small emotional win, then a clean warm hero frame of customer and car. Tagline lands.", "default_duration": 4, "camera_hint": "reaction close-up then pull-back wide hero frame, 35mm", "sound_hint": "gentle musical resolve", "personalization_slot": null, "product_visible": true }
+  ]
+}

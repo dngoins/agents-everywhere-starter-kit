@@ -1,0 +1,35 @@
+{
+  "name": "movie-magic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env node_modules/next/dist/bin/next dev -H 127.0.0.1 -p 3200",
+    "worker": "node --env-file-if-exists=.env --import tsx scripts/worker.ts",
+    "media-service": "node --env-file-if-exists=.env --import tsx scripts/media-service.ts",
+    "cli": "node --env-file-if-exists=.env --import tsx scripts/cli.ts",
+    "build": "next build",
+    "start": "node --env-file-if-exists=.env node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3200",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.22.0",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "next": "15.5.25",
+    "openai": "^7.15.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sharp": "^0.34.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.7.0"
+  }
+}

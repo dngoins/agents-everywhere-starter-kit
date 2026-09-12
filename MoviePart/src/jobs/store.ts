@@ -1,0 +1,241 @@
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+import { jobSchema, MovieError, type JobRequest, type MovieJob, type ProductReference } from "../domain";
+import type { Readiness } from "../domain/http";
+import { atomicWrite, isMissing, processAlive, readJson, withDiskLock } from "../server/files";
+import type { LocalMediaRepository } from "../server/media";
+
+export const WORKER_HEARTBEAT_MS = 3_000;
+export const WORKER_STALE_MS = 15_000;
+export const terminal = (job: MovieJob) => job.status === "COMPLETED" || job.status === "FAILED";
+type WorkerLease = { token: string; pid: number; heartbeatAt: string };
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
+}
+
+export function requestFingerprint(request: JobRequest): string {
+  return createHash("sha256").update(canonical(request)).digest("hex");
+}
+
+export class JobStore {
+  readonly directory: string;
+  constructor(dataDir: string) { this.directory = path.join(path.resolve(dataDir), "jobs"); }
+  private manifest(id: string): string {
+    if (!z.uuid().safeParse(id).success) throw new MovieError("JOB_NOT_FOUND", "Job not found.", 404);
+    return path.join(this.directory, "records", `${id}.json`);
+  }
+  private queue(id: string, status: "pending" | "claimed"): string { return path.join(this.directory, status, `${id}.json`); }
+  private idempotencyPath(ownerId: string, key: string): string {
+    const hash = createHash("sha256").update(JSON.stringify([ownerId, key])).digest("hex");
+    return path.join(this.directory, "idempotency", `${hash}.json`);
+  }
+  private get leasePath(): string { return path.join(this.directory, "worker.json"); }
+  private transaction<T>(action: () => Promise<T>): Promise<T> { return withDiskLock(this.directory, action); }
+  private async write(job: MovieJob): Promise<void> {
+    jobSchema.parse(job);
+    await atomicWrite(this.manifest(job.id), JSON.stringify(job));
+  }
+
+  async get(id: string): Promise<MovieJob> {
+    try { return jobSchema.parse(await readJson(this.manifest(id))); } catch (error) {
+      if (error instanceof MovieError) throw error;
+      if (isMissing(error)) throw new MovieError("JOB_NOT_FOUND", "Job not found.", 404);
+      throw new MovieError("INVALID_JOB_RECORD", "The saved job record is invalid.", 500);
+    }
+  }
+  async getOwned(id: string, ownerId: string): Promise<MovieJob> {
+    const job = await this.get(id);
+    if (job.ownerId !== ownerId) throw new MovieError("JOB_NOT_FOUND", "Job not found.", 404);
+    return job;
+  }
+  async list(): Promise<MovieJob[]> {
+    const directory = path.join(this.directory, "records");
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const names = (await readdir(directory)).filter(name => /^[a-f0-9-]+\.json$/.test(name));
+    return Promise.all(names.map(name => this.get(name.slice(0, -5))));
+  }
+
+  async findIdempotent(ownerId: string, request: JobRequest): Promise<MovieJob | null> {
+    const index = await readJson(this.idempotencyPath(ownerId, request.idempotency_key)).catch(error => {
+      if (isMissing(error)) return null;
+      throw error;
+    });
+    if (index) {
+      const entry = z.object({ jobId: z.uuid(), fingerprint: z.string() }).strict().parse(index);
+      if (entry.fingerprint !== requestFingerprint(request)) {
+        throw new MovieError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different request.", 409);
+      }
+      try { return await this.getOwned(entry.jobId, ownerId); } catch (error) {
+        if (error instanceof MovieError && error.code === "JOB_NOT_FOUND") {
+          throw new MovieError("JOB_DELETED", "This request's job was deleted. Use a new idempotency key only to intentionally create another movie.", 410);
+        }
+        throw error;
+      }
+    }
+    const existing = (await this.list()).find(job => job.ownerId === ownerId && job.request.idempotency_key === request.idempotency_key);
+    if (existing && requestFingerprint(existing.request) !== requestFingerprint(request)) {
+      throw new MovieError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different request.", 409);
+    }
+    return existing ?? null;
+  }
+
+  async create(ownerId: string, request: JobRequest, product: ProductReference, verifyReferences?: () => Promise<void>): Promise<MovieJob> {
+    return this.transaction(async () => {
+      const existing = await this.findIdempotent(ownerId, request);
+      if (existing) return existing;
+      await verifyReferences?.();
+      const at = new Date().toISOString();
+      const job = jobSchema.parse({
+        id: randomUUID(), ownerId, request, product, status: "RECEIVED", createdAt: at, updatedAt: at,
+        events: [{ at, stage: "RECEIVED", message: "Queued for the local movie worker.", provider: null, shotId: null }],
+        warnings: [], error: null, character: null, plan: null, frames: [], hero: null, result: null, operations: [],
+      });
+      await this.write(job);
+      await atomicWrite(this.idempotencyPath(ownerId, request.idempotency_key), JSON.stringify({
+        jobId: job.id, fingerprint: requestFingerprint(request),
+      }));
+      await atomicWrite(this.queue(job.id, "pending"), JSON.stringify({ jobId: job.id }));
+      return job;
+    });
+  }
+
+  async update(id: string, mutate: (job: MovieJob) => void): Promise<MovieJob> {
+    return this.transaction(async () => {
+      const job = await this.get(id);
+      mutate(job);
+      job.updatedAt = new Date().toISOString();
+      await this.write(job);
+      return job;
+    });
+  }
+
+  private async lease(): Promise<WorkerLease | null> {
+    try {
+      return z.object({ token: z.uuid(), pid: z.number().int().positive(), heartbeatAt: z.iso.datetime() }).parse(await readJson(this.leasePath));
+    } catch (error) {
+      if (isMissing(error)) return null;
+      throw new MovieError("WORKER_LOCK_INVALID", "The local worker lock is invalid; inspect the private job store before restarting.", 503);
+    }
+  }
+
+  async workerReadiness(): Promise<Readiness> {
+    const lease = await this.lease().catch(() => null);
+    const available = !!lease && processAlive(lease.pid) && Date.now() - Date.parse(lease.heartbeatAt) < WORKER_STALE_MS;
+    return { available, message: available ? "Local worker is running." : "Start npm run worker in a separate terminal before creating a movie." };
+  }
+
+  async acquireWorker(): Promise<string> {
+    return this.transaction(async () => {
+      const existing = await this.lease();
+      if (existing && processAlive(existing.pid)) {
+        throw new MovieError("WORKER_ALREADY_RUNNING", "Another local movie worker owns the queue.", 409);
+      }
+      const token = randomUUID();
+      await atomicWrite(this.leasePath, JSON.stringify({ token, pid: process.pid, heartbeatAt: new Date().toISOString() }));
+      return token;
+    });
+  }
+
+  private async requireLease(token: string): Promise<WorkerLease> {
+    const lease = await this.lease();
+    if (!lease || lease.token !== token || lease.pid !== process.pid) throw new MovieError("WORKER_LOCK_LOST", "The worker no longer owns the queue.", 409);
+    return lease;
+  }
+  async heartbeat(token: string): Promise<void> {
+    await this.transaction(async () => {
+      const lease = await this.requireLease(token);
+      await atomicWrite(this.leasePath, JSON.stringify({ ...lease, heartbeatAt: new Date().toISOString() }));
+    });
+  }
+  async releaseWorker(token: string): Promise<void> {
+    await this.transaction(async () => {
+      const lease = await this.lease();
+      if (lease?.token === token && lease.pid === process.pid) await rm(this.leasePath, { force: true });
+    });
+  }
+
+  async recoverInterrupted(token: string): Promise<void> {
+    await this.transaction(async () => {
+      await this.requireLease(token);
+      const claimedDirectory = path.join(this.directory, "claimed");
+      await mkdir(claimedDirectory, { recursive: true, mode: 0o700 });
+      const claimed = new Set((await readdir(claimedDirectory)).filter(file => file.endsWith(".json")).map(file => file.slice(0, -5)));
+      for (const job of await this.list()) {
+        if (!terminal(job) && (claimed.has(job.id) || job.status !== "RECEIVED")) {
+          const stage = job.status;
+          job.status = "FAILED";
+          job.updatedAt = new Date().toISOString();
+          job.error = { code: "WORKER_INTERRUPTED", message: "The worker stopped during this job. Saved artifacts were retained; paid operations will not be repeated automatically.", stage };
+          job.events.push({ at: job.updatedAt, stage: "FAILED", message: job.error.message, provider: null, shotId: null });
+          await this.write(job);
+        }
+        if (terminal(job)) {
+          await rm(this.queue(job.id, "pending"), { force: true });
+          await rm(this.queue(job.id, "claimed"), { force: true });
+        } else if (job.status === "RECEIVED") {
+          await atomicWrite(this.queue(job.id, "pending"), JSON.stringify({ jobId: job.id }));
+        }
+      }
+    });
+  }
+
+  async claim(token: string): Promise<MovieJob | null> {
+    return this.transaction(async () => {
+      await this.requireLease(token);
+      const claimedDirectory = path.join(this.directory, "claimed");
+      await mkdir(claimedDirectory, { recursive: true, mode: 0o700 });
+      if ((await readdir(claimedDirectory)).some(file => file.endsWith(".json"))) return null;
+      const jobs = (await this.list()).filter(job => job.status === "RECEIVED").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      for (const job of jobs) {
+        try { await rename(this.queue(job.id, "pending"), this.queue(job.id, "claimed")); } catch (error) {
+          if (!isMissing(error)) throw error;
+          // A crash after the manifest commit but before queue publication must not strand an unpaid job.
+          await atomicWrite(this.queue(job.id, "pending"), JSON.stringify({ jobId: job.id }));
+          await rename(this.queue(job.id, "pending"), this.queue(job.id, "claimed"));
+        }
+        return job;
+      }
+      return null;
+    });
+  }
+
+  async finishClaim(id: string, token: string): Promise<void> {
+    await this.transaction(async () => {
+      await this.requireLease(token);
+      const job = await this.get(id).catch(error => {
+        if (error instanceof MovieError && error.code === "JOB_NOT_FOUND") return null;
+        throw error;
+      });
+      if (job && !terminal(job)) throw new MovieError("JOB_NOT_TERMINAL", "Cannot release an unfinished job claim.", 409);
+      await rm(this.queue(id, "claimed"), { force: true });
+    });
+  }
+
+  async deleteOwned(id: string, ownerId: string, media: LocalMediaRepository): Promise<void> {
+    await this.transaction(async () => {
+      const job = await this.getOwned(id, ownerId);
+      if (!terminal(job)) throw new MovieError("JOB_ACTIVE", "Only completed or failed jobs can be deleted.", 409);
+      await atomicWrite(this.idempotencyPath(ownerId, job.request.idempotency_key), JSON.stringify({
+        jobId: job.id, fingerprint: requestFingerprint(job.request),
+      }));
+      const remaining = (await this.list()).filter(other => other.id !== id);
+      const referenced = new Set(remaining.flatMap(other => [
+        ...other.request.customer_reference_asset_ids, ...other.product.referenceImages.map(ref => ref.assetId),
+        ...other.frames.map(frame => frame.assetId), ...(other.character?.sourceImages.map(ref => ref.assetId) ?? []),
+        ...(other.hero ? [other.hero.assetId] : []), ...(other.result ? [other.result.assetId] : []),
+      ]));
+      for (const asset of await media.listAssets()) {
+        const belongsToDeletedJob = asset.jobId === id || job.request.customer_reference_asset_ids.includes(asset.id);
+        if (asset.ownerId === ownerId && belongsToDeletedJob && !referenced.has(asset.id)) await media.deleteOwned(asset.id, ownerId);
+      }
+      await rm(this.queue(id, "pending"), { force: true });
+      await rm(this.queue(id, "claimed"), { force: true });
+      await rm(this.manifest(id), { force: true });
+    });
+  }
+}
