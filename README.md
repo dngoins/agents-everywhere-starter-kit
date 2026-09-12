@@ -1,127 +1,164 @@
-<div align="center">
+# Magic Pitch Robot
 
-# Agents, Everywhere Hackathon Starter Kit
+**A showroom conversation becomes a personal product story.**
 
-![Agents, Everywhere hackathon — OpenAI, CopilotKit, OpenRouter, Exa, Auth0, and Ambiguous AI](assets/banner.png)
+Magic Pitch Robot (MagicPitch) brings an AI sales experience into the room: a tablet-mounted robot engages a visitor, gathers permitted preferences, presents a short automotive film, and can offer a test-drive follow-up. The project combines Damian's physical robot and voice demo, Dwight's consent-gated orchestration API, and Tiya's Movie Magic creator studio, kiosk, and media service.
 
-**Build an agent that belongs where people already work, talk, and live.**
+The goal is a useful, understandable encounter, not a chatbot attached to a robot. The customer controls what is captured and shared; the interface distinguishes a generated result from a prerecorded or synthetic demonstration.
 
-[Overview](#overview) · [Get started](#get-started) · [Templates](#templates) · [Coding agent](#coding-agent) · [Resources](#resources)
+> **Current scope:** the repository contains runnable components and integration contracts, not a claim that every physical, live-generation, and scheduling step is deployed together. The robot's standalone movie is prerecorded, the orchestrator defaults to synthetic fixtures, and live generation needs configured accounts and authorized assets. No encounter-time guarantee is implied.
 
-</div>
+[Architecture and design](docs/architecture.md) | [Movie studio and kiosk](MoviePart/README.md) | [Orchestrator](FinalProject/README.md) | [Robot setup](RobotPart/README.md) | [Teammate interfaces](FinalProject/interfaces/v1/README.md)
 
-## Overview
+## The customer experience
 
-Build for **[Agents, Everywhere: Bots, Channels, & More](https://aitinkerers.org/hackathons/global/agents-everywhere)**, the AI Tinkerers global hackathon on **September 12–13, 2026**. Choose your city on the event page for its local schedule. Put an agent inside a conversation, an app, a phone, or a physical environment. Make the context of that place essential to what it can do.
+1. **Invite and consent.** Explain the experience and obtain permission before uploading a participant image or using personal information.
+2. **Understand.** Select the permitted customer context and confirm the preferences that should shape the advertisement. Detecting a face is not identifying a stranger.
+3. **Create.** Review a structured brief or choose a studio template, then start one asynchronous movie job.
+4. **Reveal.** Show truthful progress, download the authorized result, and acknowledge reveal only after actual playback.
+5. **Follow up or leave.** Offer the next showroom action without treating it as a confirmed CRM/calendar write. Ending an orchestrated session revokes access and initiates renderer cleanup.
 
-This kit gives you three runnable templates, files to hand to your coding agent, and sponsor setup notes. Pick a user, a problem, and one complete interaction. You can use any stack; you do not need every sponsor or every surface.
+## System architecture
 
-Your project and its core functionality must be created during the event. Existing libraries, templates, and starter code are allowed; describe what you reuse and what you build. Read [the rules](hackathon-rules.md), then follow your city's participant portal for the current deadline and judging criteria.
+```mermaid
+flowchart LR
+    Visitor["Showroom visitor"]
+    Robot["RobotPart<br/>Tablet, camera, voice and PadBot BLE"]
+    RobotAPI["Robot demo backend<br/>Prerecorded movie and mock booking"]
+    Kiosk["MoviePart /kiosk<br/>Consent, brief, progress and playback"]
+    Orchestrator["FinalProject<br/>Session and workflow authority"]
+    Media["MoviePart media service<br/>Brief-driven rendering and cleanup"]
+    Studio["MoviePart /<br/>Independent creator studio"]
+    Worker["Studio worker<br/>References, director and storyboard"]
+    Voice["OpenAI Live<br/>Configured voice session"]
+    Models["Configured OpenAI<br/>Optional Veo for studio hero shots"]
+    Encoder["FFmpeg and ffprobe<br/>MP4 assembly and validation"]
+    Followup["Future CRM and calendar integration"]
 
-## Get started
-
-### Onboarding Prompt
-
-For web, paste this into your coding agent:
-
-```text
-Help me get started with CopilotKit. Run this command and follow the instructions:
-
-npx --yes copilotkit@latest onboard start
+    Visitor --> Robot
+    Robot --> RobotAPI
+    RobotAPI -->|"Voice session setup"| Voice
+    Robot <-->|"WebRTC audio"| Voice
+    Robot -. "Trusted shared-session bridge: integration boundary" .-> Orchestrator
+    Visitor --> Kiosk
+    Kiosk -->|"Session capability"| Orchestrator
+    Orchestrator -->|"HTTP media mode: service token"| Media
+    Visitor --> Studio
+    Studio --> Worker
+    Worker --> Models
+    Media --> Models
+    Worker --> Encoder
+    Media --> Encoder
+    Orchestrator -. "Not implemented as a live follow-up" .-> Followup
 ```
 
-For Slack, follow [Channels setup](apps/channel/README.md#get-started). For React Native, follow the [Expo setup instructions](apps/mobile/README.md#get-started).
+Solid arrows show implemented component paths, with live providers enabled only when configured. Dashed arrows identify integration boundaries or deferred work. The kiosk calls Dwight's orchestrator; it does **not** call the media service directly. The creator studio is a separate workflow, not another URL for the orchestrator.
 
-## Templates
+See the [detailed design](docs/architecture.md) for sequence diagrams, job lifecycles, credentials, persistence, and cancellation behavior.
 
-These starting points serve different kinds of context. **CopilotKit Channels** brings the Slack agent into the conversation; **CopilotKit React** connects the web agent to the app people are using; **CopilotKit React Native** brings the same agent pattern onto a phone.
+## Components and ownership
 
-### 1. Slack — an agent that joins the thread
+| Component | Responsibility | Current boundary |
+|---|---|---|
+| [RobotPart](RobotPart/README.md) - Damian | Tablet UI, local MediaPipe face detection, PadBot BLE control, voice conversation, and showroom workflow | Standalone demo serves a prerecorded MP4 and mock test-drive booking. Its existing capture flow is not automatically the orchestrator's consent flow. |
+| [FinalProject](FinalProject/README.md) - Dwight | Pairing, session capabilities, consent, confirmed context, ad briefs, media jobs, authorized assets, and revocation | Synthetic roster/product contract; mock providers by default; optional OpenAI, Exa, and HTTP media adapters |
+| [MoviePart](MoviePart/README.md) - Tiya | Creator studio, reference-led filmmaking, customer kiosk, and asynchronous media service | Real-vehicle studio and synthetic-concept media-service contracts remain separate |
+| [ResearchSocialMediaPart](ResearchSocialMediaPart/README.md) | Reserved workstream for permitted enrichment | Folder is a placeholder. The implemented optional Exa adapter lives in FinalProject and uses an explicitly supplied profile URL. |
+| [OfficeCalendarPart](OfficeCalendarPart/README.md) | Reserved CRM/calendar handoff | Folder is a placeholder; no live booking or Ambiguous AI write is implied |
+| [OriginalRepo](OriginalRepo/README.md) | Inherited Agents, Everywhere starter kit | Reference material and original examples, not the Magic Pitch Robot runtime |
 
-**OpenAI + CopilotKit Channels + Exa**
+## Choose the right demo
 
-An agent reads what people already said, researches with Exa, and answers in the same thread with native cards and source links. Start with a support conversation, a research discussion, or a team decision.
+| Workflow | Entry point | What it demonstrates |
+|---|---|---|
+| Robot and voice demo | `http://localhost:5173` | Hardware/browser interaction, local face detection, conversation, prerecorded movie, and mock scheduling |
+| Orchestrator developer harness | `http://127.0.0.1:3101/dev` | Offline consent/session/job flow with synthetic media; no paid generation required |
+| Showroom kiosk | `http://127.0.0.1:3200/kiosk` | Customer-facing client of the orchestrator: explicit consent, confirmed context, brief review, and authorized playback |
+| Creator studio | `http://127.0.0.1:3200/` | Independent reference-backed film creation with visible setup requirements |
+| Media service | `http://127.0.0.1:3201` | Server-to-server asynchronous rendering; not a browser UI |
 
-The included Slack app supplies thread history, subscriptions, search, and Channels UI. Configure your model, Exa, and a managed Channel, then run `npm run dev:slack`. No public tunnel is needed. Teams or other chat platforms can use the same Channels pattern, but this starter ships the Slack app.
+Ports are local defaults, not a hosted deployment. The browser and backend must agree on exact origins; `localhost` and `127.0.0.1` are different origins. A separate tablet needs an explicitly configured reachable address, pairing, and trusted HTTPS where browser APIs require it.
 
-**[Use the Slack template →](apps/channel/)**
+### Start the offline orchestrator
 
-### 2. Web — an agent inside your app
+Use **Node.js 24.11.0 and npm 11.6.2** for FinalProject. Each component has its own package and lockfile; there is no root `npm start`.
 
-**OpenAI + CopilotKit React + Ambiguous AI**
+From the repository root:
 
-An agent sees the page you are on and turns a request into a real workplace record you can still find after a refresh. Adapt it to customer follow-ups, a project workspace, or a personal planning app.
+```powershell
+Set-Location FinalProject
+npm ci
+npm run verify
+$env:ALLOWED_ORIGINS = "http://127.0.0.1:3200"
+npm run dev
+```
 
-The included web app supplies page context, frontend tools, agent-rendered UI, and a browser approval step. Connect an Ambiguous AI workspace, then run `npm run dev:web`; approved follow-ups are saved through the server and can be read back after refresh.
+The service defaults to mock providers. Follow [its pairing instructions](FinalProject/README.md#start-locally) for the private device token. Do not paste tokens into chat, URLs, logs, or source control. `/dev` is the synthetic developer harness; it is not the customer kiosk.
 
-**[Use the web template →](apps/web/)**
+### Start Tiya's studio and kiosk
 
-### 3. React Native — an agent in your pocket
+In a second terminal, from the repository root:
 
-**OpenAI or OpenRouter + CopilotKit React Native**
+```powershell
+Set-Location MoviePart
+npm ci
+npm run dev
+```
 
-A mobile agent reads app state, renders native cards, and waits for a tap before changing local sample data. Start with a personal finance assistant, a field checklist, an inventory counter, or any workflow where phone context and approval matter.
+Open `/kiosk` to pair with the orchestrator or join the robot's existing session through an agreed trusted bridge. Creating another session in the kiosk does not attach the robot to it. Refreshing the kiosk forgets its in-memory capability.
 
-The included Expo app supplies seeded finance state, native rendered tool UI, a human-in-the-loop expense approval, and a mobile-specific CopilotKit runtime endpoint served by the web app. Configure your model provider, start `npm run dev:web`, then run the mobile app from `apps/mobile`.
+For the independent creator studio, also run `npm run worker` in another terminal in `MoviePart`. Configure a private `.env`, provide the selected car's authorized references, and confirm generation consent before creating a movie. The Create action lists missing requirements; it never silently turns unavailable live generation into mock success.
 
-**[Use the React Native template →](apps/mobile/)**
+For real orchestrator media rendering, separately run `npm run media-service` in MoviePart and configure Dwight's HTTP media adapter with the matching private service token. See [the media handoff](MoviePart/README.md#dwight-integration) before sending any participant data. Mock orchestrator mode does not need this service.
 
-### Make the demo yours
+For hardware operation, follow [RobotPart's prerequisites and start commands](RobotPart/README.md). Bluetooth, camera, microphone, and voice-provider readiness are separate from movie rendering.
 
-The supplied on-call and finance assistants are **infrastructure examples**: read ambient context, call a tool, render useful UI, and return a verifiable result. Choose a different user, problem, dataset, and interaction; the goal is your own project, not another version of the starter scenario.
+## Movie design
 
-Use the [demo prompts](dev-docs/demo-prompts.md) to learn how the pieces connect, then replace the sample domain. In the Slack sample incident flow, approval cards record decisions without executing production actions. In the web follow-up flow, the page approval button saves the reviewed Ambiguous task. In the mobile finance flow, approval changes local in-memory sample data. Enforce the same kind of write boundary around any external action you add.
+Movie Magic builds a controlled film from stable references rather than asking one prompt to invent an entire advertisement. Original photos anchor likeness and vehicle appearance; a structured plan controls narrative, camera direction, and continuity.
 
-Want another surface pattern? The web app also includes a voice route, and the shared agent can connect to remote MCP tools when configured. The event surfaces are inspiration, not separate tracks or a requirement to build multiple apps.
-
-## Coding agent
-
-Give your agent these files before it starts coding:
-
-| File | What it provides |
+| Choice | Behavior |
 |---|---|
-| [hackathon-overview.md](hackathon-overview.md) | The challenge, four surfaces, and official judging criteria |
-| [hackathon-rules.md](hackathon-rules.md) | Build eligibility, inherited code, and required deliverables |
-| [using-sponsor-tools.md](using-sponsor-tools.md) | Every sponsor featured in this kit: access, authentication, configuration, and a first working call |
-| [AGENTS.md](AGENTS.md) | Repository conventions and verification commands |
-| [Channels skill](.agents/skills/build-channels-agent/SKILL.md) | Verified Channels APIs for the Slack template |
+| Vehicles | Tesla Model Y and Toyota Tundra Hybrid, each requiring its own authorized exterior/interior reference pack. Model 3 reference files are not substituted for Model Y. |
+| Templates | Velocity, Tomorrow Drive, Dream Route, and Hero of the Day |
+| Classic format | Four shots, 18 seconds |
+| Tiya's six-beat format | Six shots, 23 seconds; Hero of the Day is 24 seconds |
+| Hero modes | `LIKENESS` uses approved customer photos; `POV` and `PERSONALIZED` omit customer photos from provider calls |
+| Baseline rendering | Approved stills with pan/zoom, optionally scored with a permitted local audio file |
+| Optional enhancement | One eight-second Veo hero clip, with an explicit return to storyboard motion if the enhancement fails |
 
-The app READMEs provide launch commands, files to customize, and a concrete result to check. Start with one template and add a second surface only if it helps your user.
+The studio's output is a validated 16:9, 720p, 24 fps MP4. Its `storyboard-motion` and `hybrid-video` modes describe how it was assembled. They are **not** the orchestrator's result-provenance labels.
 
-## Resources
+Dwight's current `demo-car-v1` brief instead describes an unbranded synthetic concept, with its own scenes, on-screen copy, CTA, and duration. The media service respects that brief; it does not convert it into a Tesla or Toyota advertisement.
 
-| Need | Go here |
+## Consent, provenance, and operational limits
+
+- Keep provider keys, pairing capabilities, service tokens, uploaded images, and runtime state private. Copy `.env.example` only when you need a new local configuration; never overwrite an existing credential file blindly.
+- `generated`, `mock_fixture`, and `prerendered_fallback` have different meanings and must remain visible in the kiosk. A color-bar fixture is not a film starring the customer.
+- A ready file is not proof it played. Tiya's kiosk sends `media_revealed` after actual playback; choose one device to own that acknowledgement.
+- Cancellation removes renderer-held work/assets and blocks late resubmission by key. It does not erase a model vendor's retained data or guarantee reversal of a paid submission.
+- Face detection is not face recognition. The orchestrator roster is synthetic; do not present it as real enrollment or use images to discover a stranger's identity.
+- Local filesystem persistence is not distributed infrastructure. Cloud deployment, real CRM/calendar execution, and live physical end-to-end acceptance remain separate work.
+
+## Validation and documentation
+
+Run commands from the named component directory:
+
+| Component | Local validation |
 |---|---|
-| Event details, deadline, and judging | [Find your city](https://aitinkerers.org/hackathons/global/agents-everywhere), then open its participant portal and handbook |
-| OpenAI agent development | [Agents SDK quickstart](https://openai.github.io/openai-agents-js/guides/quickstart/) |
-| OpenRouter access and model choice | [Quickstart](https://openrouter.ai/docs/quickstart) · [Keys](https://openrouter.ai/keys) · [Model catalog](https://openrouter.ai/models) · [Model switching](dev-docs/model-switching.md) |
-| CopilotKit app development | [Docs](https://docs.copilotkit.ai/) · [Tools and context](dev-docs/tools-and-context.md) · [Discord channel for technical questions](https://discord.com/channels/1122926057641742418/1548038338848489532) |
-| CopilotKit Channels | [Channels guide](https://copilotkit.ai/channels-guide.md) · [Screenshot walkthrough](dev-docs/channels-sdk-walkthrough/README.md) · [OpenTag example app](https://github.com/CopilotKit/OpenTag) |
-| Exa quickstart | [Search API guide](https://exa.ai/docs/reference/search-api-guide) · [Kit setup](using-sponsor-tools.md#exa) |
-| Auth0 API authorization | [Node API](https://auth0.com/docs/quickstart/backend/nodejs) · [Kit setup](using-sponsor-tools.md#auth0) |
-| Ambiguous AI quickstart | [Developer guide](https://www.ambiguous.ai/llms.txt) · [Kit setup](using-sponsor-tools.md#ambiguous-ai) |
-| Rehearse and debug | [Demo prompts](dev-docs/demo-prompts.md) · [Troubleshooting](dev-docs/troubleshooting.md) |
-| Prepare your entry | [Submission checklist](SUBMISSION.md) |
+| MoviePart | `npm run typecheck`, `npm test`, `npm run build` |
+| FinalProject | `npm run verify` - typecheck, tests, generated-interface drift, build, and synthetic smoke flow |
+| RobotPart | `npm test`, `npm run build` |
 
-For credit redemption instructions, choose your city on the [global event page](https://aitinkerers.org/hackathons/global/agents-everywhere) and check its participant portal's **Credits & Offers** section.
+Offline tests and encoded fixtures demonstrate software behavior, not live account access, customer likeness quality, physical robot safety, or human-observed playback.
 
-For technical questions during the event, check your city's participant portal and ask your local organizers.
+- [Architecture and interaction design](docs/architecture.md)
+- [Movie studio setup and pipeline](MoviePart/README.md)
+- [Vehicle reference preparation](MoviePart/demo-data/README.md)
+- [Teammate contracts and examples](FinalProject/interfaces/v1/README.md)
+- [Orchestrator operations runbook](FinalProject/docs/runbook.md)
+- [Robot backend and workflow](RobotPart/server/README.md)
 
-For the Slack/web workspaces, `npm run verify` runs typechecks and offline tests without credentials. The mobile app has its own install, tests, typecheck, and Metro export checks under `apps/mobile`. Each app reports missing configuration when the relevant integration is used. Live sponsor calls and platform delivery require your accounts. See [developer docs](dev-docs/README.md) for detailed setup and deployment.
+## Project origin
 
-# The Agent-RedHat submittions for the AI Tinker Hackathon 2026 in Miami
-
-
-A physical sales agent that meets a customer where the purchase happens, talks with them naturally, learns what matters to them, and creates a personalized commercial starring that customer using the product—all before the conversation ends
-
-## 45-second judge pitch
-
-Today, personalized advertising follows you on a screen. We asked: what if the advertisement came to you?
-
-MagicPitch is a physical AI sales agent that lives inside a showroom. With the customer's permission, our robot recognizes an enrolled customer, starts a natural voice conversation, and learns or enriches what they care about.
-
-While they're still talking, a background agent creates a personalized mini-commercial that puts that customer inside the product experience. In our demo, instead of showing someone a generic car advertisement, we show them walking up to the car, getting inside it, and experiencing the lifestyle around it.
-
-Before the conversation ends, the robot reveals the custom ad and can ask, “Would you like me to schedule a test drive?”
-
-This isn't a chatbot mounted on a robot. The camera, voice, movement, location, physical customer, and moment of purchase are the workflow.
+Built for the AI Tinkerers **Agents, Everywhere** hackathon in Miami by the Agent-RedHat team. The inherited starter remains under [OriginalRepo](OriginalRepo/README.md), including [event guidance](OriginalRepo/hackathon-overview.md), [rules](OriginalRepo/hackathon-rules.md), and [sponsor setup references](OriginalRepo/using-sponsor-tools.md). Those starter examples and integrations are not claims about what the Magic Pitch Robot currently executes.
