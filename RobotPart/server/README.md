@@ -97,8 +97,8 @@ back to chat. Following/expert calls do not advance this flow.
 | `movie_feedback` | `{liked:boolean}` | feedback; true → drive_offer, `offer_test_drive`; false → declined, `decline_test_drive` |
 | `test_drive_interest` | `{accepted:boolean}` | drive_offer; true → selecting, `show_slots`; false → declined, `decline_test_drive` |
 | `get_test_drive_slots` | `{}` | selecting; refresh availability + `show_slots` |
-| `book_test_drive` | `{slotId:string,car:'model3'|'modely',confirmed:boolean}` | selecting, explicitly true, current offered slot; → booked, `booked` + booking |
-| `follow_customer` | `{destination:'model3'|'modely',confirmed:boolean}` | Explicit true, not watching; `follow_customer`, destination, safety message |
+| `book_test_drive` | `{slotId:string,car:'model3'\|'modely',confirmed:boolean}` | selecting, explicitly true, current offered slot; → booked, `booked` + booking |
+| `follow_customer` | `{destination:'model3'\|'modely',confirmed:boolean}` | Explicit true, not watching; `follow_customer`, destination, safety message |
 | `stop_following` | `{}` | Active customer; `stop_following` |
 | `ask_vehicle_expert` | `{question:string,deepReasoning:boolean}` | Active customer, trimmed question 1–2000 chars; `{answer}` via Responses |
 

@@ -115,7 +115,7 @@ test('WebSocket events and ready replay are scoped to client and exclude inactiv
   await b.waitFor(1);
   await a.barrier();
   assert.equal(a.messages.length, 1);
-  assert.equal(b.messages[0].customerId, CUSTOMER_B);
+  assert.equal((b.messages[0] as { customerId: string }).customerId, CUSTOMER_B);
   assert.equal((await h.customer(CUSTOMER_A, CLIENT_B)).status, 403);
   assert.equal((await h.api(`/api/customers/${CUSTOMER_A}`, { clientId: CLIENT_B }, 'DELETE')).status, 403);
   assert.equal((await h.api(`/api/customers/${CUSTOMER_A}`, { clientId: CLIENT_A }, 'DELETE')).status, 200);
