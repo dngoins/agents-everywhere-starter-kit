@@ -10,7 +10,7 @@ Local-first, consent-gated TypeScript/Hono service for Dwight's orchestration an
 - A **developer harness**, not Tiya's customer UI, at <http://127.0.0.1:3101/dev>.
 - An offline mock sequence using a synthetic PNG and a real, silent, one-second color-bar MP4. **This is not a generated personalized advertisement.**
 
-This is not evidence of a working robot, consented live participant demo, Tiya media/UI integration, audiovisual browser acceptance, cloud deployment, or a measured sub-90-second live encounter. Optional real-provider configuration does not establish account access or successful external integration. Trigger.dev, Ambiguous scheduling, deployment automation, and a combined team launcher remain deferred.
+Tiya's kiosk and media-service implementation are integrated through a separate local launcher and cross-part HTTP checks. This is not evidence of a working robot, consented live participant demo, audiovisual browser acceptance, cloud deployment, or a measured sub-90-second live encounter. Optional real-provider configuration does not establish account access or successful external integration. Trigger.dev, Ambiguous scheduling, and cloud deployment remain deferred.
 
 Trigger and follow-up execution are explicitly unsupported settings: startup accepts only `JOB_PROVIDER=local` and `FOLLOWUP_PROVIDER=disabled`. Selecting Trigger or an enabled follow-up provider fails validation; no live implementation is implied.
 
@@ -57,6 +57,8 @@ Do not paste pairing tokens into logs, screenshots, issues, URLs, or chat. The h
 | `npm run interfaces:export` | Regenerate dependency-free types, JSON schemas, OpenAPI and examples from the executable contracts. |
 | `npm run interfaces:check` | Reject stale generated handoff files and invalid local schema references. |
 | `npm run interfaces:package` | Produce `artifacts/magicpitch-interfaces-v1.tgz` for Damian and Tiya. |
+| `npm run dev:kiosk` | Start Tiya's kiosk with the offline orchestrator; both packages must be installed and FinalProject built. |
+| `npm run test:moviepart` | Exercise the actual kiosk client and MoviePart media service over local HTTP with synthetic test inputs. |
 
 Smoke explicitly clears inherited provider credentials, selects mock/disabled/local modes, and preloads a built-in-only guard rejecting nonnumeric-loopback application connections through fetch and HTTP(S). This is a regression guard, not an OS firewall or a security sandbox. CI smoke simulates a reveal acknowledgement **after** verifying real fixture bytes; it does not observe video playback.
 
@@ -79,6 +81,7 @@ Use a new extraction directory for each release. The archive includes the lockfi
 
 ## Integration and operations
 
+- [MoviePart integration](docs/moviepart-integration.md): one-command kiosk startup, explicit live-media configuration, and cross-part HTTP checks.
 - [Teammate interface bundle](interfaces/v1/README.md): self-contained handoff; [Damian](interfaces/v1/DAMIAN.md) and [Tiya](interfaces/v1/TIYA.md) have separate integration guides.
 - [HTTP contracts](docs/contracts.md): versioned events, commands, result provenance, and client integration.
 - [Runbook](docs/runbook.md): pairing, local recovery, packaging, retention, and live-integration gates.

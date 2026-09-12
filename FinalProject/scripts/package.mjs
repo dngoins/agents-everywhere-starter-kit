@@ -11,7 +11,7 @@ const archive = resolve(artifacts, "magicpitch-demo.tgz");
 let ownsStaging = false;
 const files = [
   "package.json", "package-lock.json", ".env.example", ".nvmrc", ".npmrc", "README.md", "PLAN.md",
-  "docs/runbook.md", "docs/contracts.md",
+  "docs/runbook.md", "docs/contracts.md", "docs/moviepart-integration.md",
   "public/dev/index.html", "public/dev/app.js", "public/dev/styles.css",
   "fixtures/media/mock-preview.mp4", "fixtures/media/sample.png", "fixtures/media/README.md",
   "scripts/smoke.mjs", "scripts/offline-network-guard.mjs",

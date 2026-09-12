@@ -8,6 +8,12 @@ The inherited starter is under `OriginalRepo`. It supplies Next/CopilotKit, a sh
 
 `FinalProject` now contains the independently runnable API, executable schemas, offline providers, job runner, synthetic media, development harness, tests and tooling. It does not import or alter the inherited starter.
 
+Tiya's committed MoviePart kiosk and dedicated media service are now integrated
+through `dev:kiosk` and cross-part HTTP tests. The older attached ZIP contains a
+different creator-studio client, not the renderer. See
+[MoviePart integration](docs/moviepart-integration.md) for exact startup, modes
+and remaining live-provider/robot gates.
+
 ## 2. Dwight Scope
 
 Dwight owns orchestration, contracts, typed configuration, provider boundaries, API integration, local job state, developer smoke/recovery, and CI/build/package automation. Damian owns robot/voice/capture. Tiya owns customer UI, image generation, FFmpeg/video, and reveal. Edilma owns scope, permissions, acceptance coordination and submission.
@@ -36,7 +42,7 @@ Only `demo-alex`, `demo-sam`, and the synthetic `demo-car` are registered today.
 
 Default: mock brief/profile/media, local jobs, disabled follow-up. Real provider selection requires explicit configuration.
 
-Opt-in OpenAI supplies structured storyboard content. Opt-in Exa retrieves an explicitly supplied, separately consented public source without inferring preferences. The HTTP media adapter defines a proposed asynchronous interface for Tiya, not a working media generation service.
+Opt-in OpenAI supplies structured storyboard content. Opt-in Exa retrieves an explicitly supplied, separately consented public source without inferring preferences. The HTTP media adapter connects to Tiya's dedicated MoviePart service; live generation requires operator-provided credentials and renderer readiness.
 
 Fallbacks are off by default and visibly labeled when enabled. Unknown media acceptance is never automatically retried. HTTP media requires cancellation/deletion capabilities and uses globally unique upstream job keys; failed cleanup retains private reconciliation metadata. Trigger and Ambiguous selections fail startup rather than silently pretending to work.
 
