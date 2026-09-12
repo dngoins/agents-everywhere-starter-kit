@@ -1,0 +1,1115 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MagicPitch orchestration API",
+    "version": "1.0.0",
+    "description": "Offline-capable API; no robot/media provider implementation bundled."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3101"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "deviceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Operator pairing token; session creation only"
+      },
+      "sessionBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Returned session capability; scoped to one session"
+      }
+    }
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Process alive"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "ready",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Selected provider modes and local readiness, not a live-provider probe"
+          }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "security": [
+          {
+            "deviceBearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/SessionCreatedSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "snapshot",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "afterRevision",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 999999999
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/SessionSnapshotSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "revokeSession",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session revoked; assets cleared"
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/events": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "recordEvent",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/SessionEventSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/SessionSnapshotSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/jobs/{jobId}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "jobId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getMediaJob",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/MediaJobSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/assets": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "uploadImage",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/AssetUploadedSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/assets/{assetId}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "assetId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadAsset",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Range",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Single bytes=start-end or suffix range"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized asset bytes",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Authorized byte range"
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Range not satisfiable"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/commands/identify_customer": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "identify_customer",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/IdentifyCustomerInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/CustomerProfileSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/commands/enrich_profile": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "enrich_profile",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/EnrichProfileInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/CustomerContextSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/commands/create_ad_brief": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "create_ad_brief",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/CreateAdBriefInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/AdBriefSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/commands/start_media_job": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "start_media_job",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/StartMediaJobInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/MediaJobSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/commands/get_media_status": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "get_media_status",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/GetMediaStatusInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/MediaJobSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/commands/schedule_followup": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "schedule_followup",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/ScheduleFollowupInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "503": {
+            "description": "Safe error; code, message and requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "description": "Not implemented. Always returns an explicit disabled response."
+      }
+    }
+  }
+}

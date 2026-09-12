@@ -1,0 +1,171 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MagicPitch media-service adapter contract",
+    "version": "1.0.0",
+    "description": "Proposed service for Tiya to implement; distinct from the orchestration API."
+  },
+  "servers": [
+    {
+      "url": "https://media-service.example.invalid"
+    }
+  ],
+  "security": [
+    {
+      "mediaBearer": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "mediaBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Server-held MEDIA_SERVICE_TOKEN; never a browser token"
+      }
+    }
+  },
+  "paths": {
+    "/capabilities": {
+      "get": {
+        "operationId": "mediaCapabilities",
+        "responses": {
+          "200": {
+            "description": "Cancellation and deletion are required before image transfer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/MediaCapabilitiesSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "post": {
+        "operationId": "submitMedia",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Must equal the globally unique MagicPitch jobId, not a session-local client key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/MediaSubmitRequestSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Acknowledge before rendering completes; any successful 2xx response is accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/MediaAcceptanceSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{providerJobId}": {
+      "parameters": [
+        {
+          "name": "providerJobId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "pollMedia",
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/MediaServiceStatusSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assets/{filename}": {
+      "parameters": [
+        {
+          "name": "filename",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+\\.mp4$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "fetchRenderedMedia",
+        "responses": {
+          "200": {
+            "description": "Bounded authenticated MP4; redirects rejected",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/by-key/{jobId}": {
+      "parameters": [
+        {
+          "name": "jobId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "cancelAndDeleteByKey",
+        "description": "Cancel/tombstone the globally unique MagicPitch job key, stop its render and delete renderer-held assets. Must also prevent a delayed POST from creating a cancelled key. Idempotent.",
+        "responses": {
+          "200": {
+            "description": "Validated response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/MediaCancellationSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

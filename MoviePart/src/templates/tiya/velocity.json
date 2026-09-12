@@ -1,0 +1,31 @@
+{
+  "template_id": "VELOCITY",
+  "display_name": "Velocity",
+  "genre": "premium action-car cinema",
+  "promise": "This car makes you feel powerful.",
+  "director_personality": {
+    "tone": ["sleek", "exciting", "confident", "kinetic", "cinematic"],
+    "avoid": ["melodrama", "cheesy stunts", "cluttered frames", "copying any real film scene", "brand logos other than the product"]
+  },
+  "cinematography": {
+    "pacing": "fast, escalating, 2-4 second cuts",
+    "camera": "low-angle tracking, wheel and dashboard inserts, driver reaction, wide road geography, rapid lateral movement",
+    "lighting": "neon night or hard golden hour, strong rim light, high contrast",
+    "style": "cinematic, anamorphic flares, slight film grain, hyper-real",
+    "color_palette": "deep blacks, electric cyan, warm amber highlights"
+  },
+  "sound": {
+    "music_style": "cinematic electronic percussion",
+    "tempo_bpm": 138,
+    "energy_arc": "rise, hit, rise, release"
+  },
+  "personalization_slots": ["city", "pet passenger", "music preference", "career or event destination", "fashion"],
+  "beats": [
+    { "beat": "ordinary_moment", "name": "Ordinary moment", "goal": "Customer in a relatable, slightly dull place. They recognize themselves.", "default_duration": 3, "camera_hint": "eye-level medium shot, static, 35mm", "sound_hint": "dull city hum", "personalization_slot": "city", "product_visible": false },
+    { "beat": "the_spark", "name": "The spark", "goal": "The car appears or wakes. A light, sound or gesture signals this stops being ordinary.", "default_duration": 3, "camera_hint": "low angle, slow push-in on the car, 35mm", "sound_hint": "rising electric tone", "personalization_slot": null, "product_visible": true },
+    { "beat": "crossing_over", "name": "Crossing over", "goal": "Customer gets in, grips the wheel, presses start. Point of no return.", "default_duration": 2, "camera_hint": "close-up on hand and ignition, static, 50mm", "sound_hint": "seatbelt click, ignition, deep whoosh", "personalization_slot": null, "product_visible": true },
+    { "beat": "the_impossible", "name": "The impossible", "goal": "The launch. Streets blur, the world bends around the car. The gasp.", "default_duration": 5, "camera_hint": "low exterior tracking, fast push-in, wide 24mm", "sound_hint": "engine surge, riser, bass hit", "personalization_slot": "music preference", "product_visible": true },
+    { "beat": "mastery", "name": "Mastery", "goal": "Customer calm and in control, the world responding to them.", "default_duration": 3, "camera_hint": "interior three-quarter on the driver, gentle handheld, 50mm", "sound_hint": "music settles into a confident groove", "personalization_slot": "pet passenger", "product_visible": true },
+    { "beat": "payoff", "name": "New world / payoff", "goal": "Arrival somewhere aspirational. Clean hero reveal of the car, tagline lands.", "default_duration": 4, "camera_hint": "pull-back reveal with slow crane up, wide 24mm", "sound_hint": "final bass hit, single clean note", "personalization_slot": "career or event destination", "product_visible": true }
+  ]
+}
