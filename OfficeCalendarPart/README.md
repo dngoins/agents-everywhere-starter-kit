@@ -1,0 +1,1 @@
+Where we take the information from the customer and write it down in the CRM and book on a calendar with Ambigous AI

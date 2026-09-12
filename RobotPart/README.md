@@ -1,0 +1,1 @@
+Just the start of the project for the robot to look around and find people. then face recognize them and then communicate with them while the 'movie" is being created. It will then show the movie and pass the information to the OfficeCalendarPart
