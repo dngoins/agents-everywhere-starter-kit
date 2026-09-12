@@ -1,1 +1,13 @@
 .env
+**/node_modules/
+**/.env
+**/.env.*
+!**/.env.example
+**/dist/
+**/.data/
+**/coverage/
+**/*.tsbuildinfo
+**/*.log
+FinalProject/artifacts/
+FinalProject/.runtime/
+**/.next/
