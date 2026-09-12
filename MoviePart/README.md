@@ -1,6 +1,8 @@
-# Movie Magic
+# Magic Pitch Robot - Movie Magic
 
 Tiya's reference-led movie studio and showroom kiosk for MagicPitch. The creator studio builds personalized films from approved references; the kiosk follows Dwight's shared robot session. A separate authenticated media service accepts Dwight's complete advertisement briefs.
+
+[Magic Pitch Robot overview](../README.md) | [System architecture and design](../docs/architecture.md) | [Teammate integration](integration/README.md)
 
 **Dwight / Damian:** start with the [integration handoff](integration/README.md) and the authoritative [Dwight v1 bundle](integration/dwight/TIYA.md). The creator-studio API and orchestrator/media-service protocol are distinct; never exchange their URLs or credentials.
 
@@ -16,19 +18,37 @@ The kiosk's photo control uses the tablet/browser's file or camera picker after 
 
 ## The workflow
 
-```text
-Customer photos -> canonical visible-appearance reference
-                       +
-Car reference pack + approved interests + original scene template
-                       |
-                       v
-Validated director plan -> four or six reference-conditioned storyboard frames
-                       |
-                       v
-Visual continuity review -> optional Veo hero shot
-                       |
-                       v
-FFmpeg pan/zoom assembly -> playable, duration-validated MP4
+```mermaid
+flowchart TD
+    Mode{"Explicit hero mode"}
+    Photos["Likeness: approved customer photos"]
+    Neutral["First-person or generic driver<br/>No customer photos sent"]
+    Character["Canonical reference packet"]
+    Car["Authorized car reference pack"]
+    Profile["Approved interests and optional name/city"]
+    Template["Original four-shot or six-beat template"]
+    Director["Validated MoviePlan"]
+    Storyboard["Reference-conditioned storyboard frames"]
+    Review{"Continuity review"}
+    Retry["Bounded correction"]
+    Failure["Explicit failure<br/>Retain inspectable artifacts"]
+    Hero["Optional eight-second Veo hero clip<br/>Use approved still if unavailable"]
+    Render["FFmpeg assembly and ffprobe validation"]
+    Output["Private playable MP4"]
+
+    Mode --> Photos --> Character
+    Mode --> Neutral --> Character
+    Character --> Director
+    Car --> Director
+    Profile --> Director
+    Template --> Director
+    Director --> Storyboard
+    Character --> Storyboard
+    Car --> Storyboard
+    Storyboard --> Review
+    Review -->|"Retry allowed"| Retry --> Storyboard
+    Review -->|"Reject"| Failure
+    Review -->|"Pass"| Hero --> Render --> Output
 ```
 
 The original customer and car images accompany generation; text notes never replace them. Visual review is a quality assessment, not identity verification or a guarantee of exact likeness.
@@ -130,6 +150,21 @@ Studio polling is implemented. The separate kiosk delegates session state, conse
 ## Dwight integration
 
 The copied [v1 contract bundle](integration/dwight/README.md) is authoritative for the orchestrator and media adapter. Its OpenAPI documents remain next to `contracts.schema.json` so references resolve. Do not substitute `integration/contracts.ts`, which describes only the creator studio.
+
+```mermaid
+flowchart LR
+    Kiosk["Customer kiosk<br/>/kiosk on port 3200"]
+    Orchestrator["Dwight orchestrator<br/>Port 3101"]
+    Media["Tiya media service<br/>Port 3201"]
+    Studio["Independent creator studio<br/>/ on port 3200"]
+    Worker["Separate studio worker"]
+
+    Kiosk -->|"Session capability: consent, brief, jobs and assets"| Orchestrator
+    Orchestrator -->|"Service token: capabilities, render, download and cleanup"| Media
+    Studio -->|"Studio browser session or API token"| Worker
+```
+
+The arrows describe distinct application paths, not interchangeable endpoints. The kiosk never receives a service token or calls the creator-studio job API to bypass Dwight's session authority. The studio communicates with its worker through its private API and disk-backed queue.
 
 The kiosk pairs with a device token or joins an existing session from Damian's trusted bridge. It displays explicit consent, confirmed customer/preferences, a reviewable brief, real job state and authorized Blob playback. Result provenance distinguishes generated media, synthetic fixtures, and prerecorded fallback. `media_revealed` belongs to the actual playback event, not to the job becoming ready.
 
