@@ -1,0 +1,40 @@
+{
+  "person": {
+    "reference_images": {
+      "full_body": "MoviePart/person/full_body_front.jpg",
+      "half_body": "MoviePart/person/half_body.jpg",
+      "face": "MoviePart/person/face.jpg"
+    },
+    "apparent_age_range": "young adult, late teens to mid-20s",
+    "apparent_gender_presentation": "feminine",
+    "skin_tone": "medium-deep, warm undertone",
+    "build": "fuller, curvy build",
+    "height_impression": "average adult height (exact height not determinable from photos)",
+    "hair": {
+      "length": "shoulder-length, falling just past the shoulders",
+      "style": "braided/twisted strands woven with metallic silver tinsel, center-parted",
+      "color": "black with silver metallic tinsel strands woven through",
+      "texture": "tightly coiled, braided texture",
+      "facial_hair": "none visible"
+    },
+    "face": {
+      "shape": "rounded face with full cheeks",
+      "proportions": "large, wide-set dark brown eyes, full lips, straight eyebrows",
+      "notable_features": "thin eyeliner with a slight wing at the outer corners",
+      "glasses": false
+    },
+    "wardrobe": {
+      "outerwear": "white cable-knit button-front cardigan with ribbed cuffs and hem",
+      "top": "not visible (cardigan fully buttoned, no undergarment visible)",
+      "bottoms": "light blue denim-colored fitted trousers",
+      "footwear": "not visible",
+      "accessories": "thin gold necklace with a small star-shaped pendant, small stud earrings, light pink/nude manicured nails"
+    },
+    "distinguishing_features": [
+      "thin gold necklace with star-shaped pendant",
+      "small stud earrings",
+      "metallic silver tinsel woven into braided hair"
+    ],
+    "consistency_notes": "face.jpg is the identity anchor; full.jpg sets build + wardrobe"
+  }
+}

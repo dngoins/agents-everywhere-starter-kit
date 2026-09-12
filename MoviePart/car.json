@@ -1,0 +1,32 @@
+{
+  "car": {
+    "make_model": "Tesla Model 3 Performance",
+    "trim_mode": "Performance (dual motor, launch acceleration)",
+    "model_year_or_refresh": "2022-2023 (pre-Highland refresh: round steering wheel, chrome-delete window trim)",
+    "reference_images": {
+      "side_left": "MoviePart/Tesla_model_3/2022_tesla_model-3_sedan_performance_s_oem_1_1600x1067.jpg",
+      "rear_quarter_left": "MoviePart/Tesla_model_3/2022_tesla_model-3_sedan_performance_rq_oem_1_1600x1067.jpg",
+      "front_quarter_left": "MoviePart/Tesla_model_3/2022_tesla_model-3_sedan_performance_fq_oem_7_1600x1067.jpg",
+      "front_quarter_high": "MoviePart/Tesla_model_3/2022_tesla_model-3_sedan_performance_fq_oem_2_1600x1067.jpg"
+    },
+    "exterior": {
+      "color": "REPLACE_WITH_REAL_CAR_COLOR",
+      "wheels": "Dark-finish multi-spoke alloy wheels (reference shots show two closely related sport designs — an open turbine-spoke wheel and a denser aero-spoke wheel), low-profile tires, red brake calipers visible behind the spokes",
+      "front_end": "Smooth, closed-off front fascia with no visible upper grille opening; slim full-width LED headlight strips flanking a low, sloped hood; narrow lower bumper intake vents; centered Tesla 'T' badge on the nose",
+      "profile": "Low, coupe-like fastback sedan silhouette with a sloping roofline, short front overhang, flush door handles, and a subtle character line running along the lower doors",
+      "roof": "Full-length glass panoramic roof panel with black trim and pillars, no visible seams, rails, or sunroof opening",
+      "badging": "Tesla 'T' logo centered on the front nose; 'TESLA' wordmark badge centered on the rear trunk lid; full-width red LED tail light bar connecting the rear lamps; no separate trim badge visible"
+    },
+    "interior": {
+      "steering": "Traditional round two-spoke steering wheel (not a yoke) with a centered Tesla 'T' badge and physical scroll-wheel/button controls on each spoke",
+      "dash": "Minimalist dashboard with no analog gauge cluster in front of the driver; wide horizontal 15-inch landscape center touchscreen mounted mid-dash; light-toned horizontal trim strip spanning the dash width",
+      "seats": "Front bucket seats with visible bolstering and stitching, light/cream upholstery shown in the reference image",
+      "ambient": "Predominantly black dash, door trim, and headliner contrasted with the light-toned dash trim strip and seat upholstery; no ambient lighting strip visible in the reference images"
+    },
+    "signature_behavior": {
+      "acceleration": "instant, silent, head-snapping launch — this is the story's 'leap'",
+      "sound": "near-silent; motor whine + tire/wind noise, no engine roar",
+      "startup": "no key; wakes silently, screen lights up"
+    }
+  }
+}
