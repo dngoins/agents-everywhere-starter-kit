@@ -1,0 +1,48 @@
+{
+  "name": "magicpitch-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Consent-gated local MagicPitch orchestration API.",
+  "engines": {
+    "node": "24.11.0",
+    "npm": "11.6.2"
+  },
+  "packageManager": "npm@11.6.2",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx src/server.ts",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node scripts/tests.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "verify": "npm run typecheck && npm test && npm run interfaces:check && npm run build && npm run smoke",
+    "package:demo": "node scripts/package.mjs",
+    "interfaces:export": "node --import tsx scripts/export-interfaces.mjs",
+    "interfaces:check": "node --import tsx scripts/export-interfaces.mjs --check",
+    "interfaces:package": "node --import tsx scripts/export-interfaces.mjs --check --archive"
+  },
+  "dependencies": {
+    "@hono/node-server": "1.19.17",
+    "hono": "4.13.7",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  },
+  "files": [
+    "dist",
+    "public",
+    "fixtures",
+    ".env.example",
+    ".nvmrc",
+    ".npmrc",
+    "package-lock.json",
+    "docs",
+    "interfaces",
+    "README.md",
+    "PLAN.md"
+  ]
+}

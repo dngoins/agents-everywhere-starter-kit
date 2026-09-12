@@ -44,7 +44,13 @@ export function originAllowed(origin: string | undefined, host: string | undefin
   if (!origin) return true; // Non-browser localhost tests/clients; tab UUID is still required.
   if (extra.includes(origin)) return true;
   if (['http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:8787', 'http://localhost:8787'].includes(origin)) return true;
-  return Boolean(host && /^(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(host) && origin === `http://${host}`);
+  if (!host) return false;
+  if (origin === `http://${host}` || origin === `https://${host}`) return true;
+  const hostname = host.split(':')[0];
+  if (origin === `http://${hostname}:5173` || origin === `http://${hostname}:8787` || origin === `https://${hostname}:5173` || origin === `https://${hostname}:8787`) {
+    return true;
+  }
+  return false;
 }
 
 const toolBodySchema = identitySchema.extend({ args: z.record(z.string(), z.unknown()) });

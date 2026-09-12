@@ -61,8 +61,8 @@ export function createRobotServer(options: ServerOptions = {}) {
 
   return {
     app, httpServer, webSockets, heartbeat,
-    async listen(port = 8787): Promise<AddressInfo> {
-      httpServer.listen(port, '127.0.0.1');
+    async listen(port = 8787, host = '0.0.0.0'): Promise<AddressInfo> {
+      httpServer.listen(port, host);
       await once(httpServer, 'listening');
       const address = httpServer.address();
       if (!address || typeof address === 'string') throw new Error('HTTP server has no TCP address');

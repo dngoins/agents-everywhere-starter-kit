@@ -5,10 +5,10 @@
   "type": "module",
   "engines": { "node": ">=22.6" },
   "scripts": {
-    "dev": "concurrently -k -n api,web \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
+    "dev": "concurrently -k -n api,web \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"",
     "dev:api": "tsx watch server/index.ts",
     "build": "npm run typecheck && vite build",
-    "start": "tsx server/index.ts",
+    "start": "tsx server/index.ts --production",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test server/*.test.ts src/lib/*.test.js RobotLibrary/padbot.test.js",
     "assets": "node scripts/prepare-assets.mjs",

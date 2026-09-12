@@ -46,12 +46,13 @@ async function until<T>(get: () => Promise<T>, predicate: (value: T) => boolean)
 async function fixture(executor?: MediaExecutor, overrides: Partial<ServiceOptions> = {}) {
   const directory = path.join(root, randomUUID().slice(0, 8));
   let calls = 0;
-  const service = new MediaService({
+  const options: ServiceOptions = {
     directory, executor: executor ?? {
       ready: async () => true,
       execute: async context => { calls++; await copyFile(sample, context.output); },
     }, ...overrides,
-  });
+  };
+  const service = new MediaService(options);
   await service.start();
   const server = createMediaHttpServer(service, token);
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -64,7 +65,7 @@ async function fixture(executor?: MediaExecutor, overrides: Partial<ServiceOptio
     method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify(value),
   });
   return {
-    service, directory, base, send, submit, calls: () => calls,
+    service, options, directory, base, send, submit, calls: () => calls,
     close: async () => {
       server.closeAllConnections();
       await new Promise<void>(resolve => server.close(() => resolve()));
@@ -291,8 +292,10 @@ test("timed-out cancellation retains a tombstone and only acknowledges after a l
     assert.equal(failed.status, 503);
     assert.ok(!(await failed.text()).includes("assetsDeleted"));
     assert.equal((await f.submit(input)).status, 409);
+    // The first deadline tests timeout behavior, not the filesystem speed of
+    // the subsequent successful cleanup under concurrent encoder load.
+    f.options.cleanupTimeoutMs = 30_000;
     released.resolve();
-    await new Promise(resolve => setTimeout(resolve, 30));
     assert.deepEqual(await f.service.cancel(input.jobId), { status: "cancelled", assetsDeleted: true });
     assert.deepEqual(await readdir(path.join(f.directory, "work")), []);
   } finally { released.resolve(); await f.close(); }

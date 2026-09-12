@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>MagicPitch · Synthetic workflow simulator</title>
+    <link rel="stylesheet" href="/dev/styles.css">
+    <script type="module" src="/dev/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">MAGICPITCH / LOCAL INTEGRATION</p>
+        <h1>Developer workflow simulator</h1>
+        <p>Contract simulator for the orchestration API. <strong>Not Tiya’s customer UI.</strong></p>
+        <p class="notice">Alex and Sam are synthetic roster entries. The sample is a solid-color image.
+          Mock playback is one second of silent color bars — not a generated personalized advertisement.</p>
+      </header>
+
+      <section aria-labelledby="pair-heading">
+        <h2 id="pair-heading"><span>01</span> Pair this browser</h2>
+        <form id="pair-form">
+          <label for="device-token">Device pairing token</label>
+          <div class="row">
+            <input id="device-token" type="password" required autocomplete="off" spellcheck="false"
+              placeholder="Paste the token from the local operator">
+            <button id="pair" type="submit">Create session</button>
+          </div>
+        </form>
+        <p class="hint">Credentials stay in memory, never in URLs or browser storage. Reloading loses this session’s credential.</p>
+      </section>
+
+      <section aria-labelledby="flow-heading">
+        <h2 id="flow-heading"><span>02</span> Simulate the consented flow</h2>
+        <form id="flow-form">
+          <label for="customer">Synthetic customer</label>
+          <select id="customer">
+            <option value="demo-alex">Alex · synthetic demo entry</option>
+            <option value="demo-sam">Sam · synthetic demo entry</option>
+          </select>
+          <label for="preferences">Confirmed preference (synthetic demo input only)</label>
+          <input id="preferences" type="text" maxlength="200" value="beach road trips" required>
+          <label class="checkbox"><input id="personalization" type="checkbox" required>
+            Record permission to use this synthetic session for personalization.</label>
+          <label class="checkbox"><input id="capture" type="checkbox" required>
+            Record permission to upload the synthetic image.</label>
+          <p class="hint">No camera, microphone, external profile research, or scheduling is used. Enrichment consent remains false.</p>
+          <button id="run" type="submit" disabled>Run synthetic flow</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="status-heading">
+        <div class="section-heading">
+          <h2 id="status-heading"><span>03</span> Observe and reveal</h2>
+          <button id="refresh" type="button" class="secondary" disabled>Refresh</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">Synthetic workflow · Waiting for pairing.</p>
+        <dl>
+          <div><dt>State</dt><dd id="state">—</dd></div>
+          <div><dt>Revision</dt><dd id="revision">—</dd></div>
+          <div><dt>Media provenance</dt><dd id="provenance">No media</dd></div>
+        </dl>
+        <p id="media-label" class="notice" hidden></p>
+        <video id="preview" controls playsinline preload="metadata" hidden aria-label="Synthetic media preview"></video>
+        <p class="hint">The preview is downloaded with session authorization and played from a local Blob URL.
+          Reveal is acknowledged only after the video fires its playback-ended event.</p>
+        <details>
+          <summary>Sanitized transition log</summary>
+          <ol id="events" aria-live="polite"></ol>
+        </details>
+      </section>
+
+      <footer>
+        <button id="revoke" type="button" class="danger" disabled>Revoke session and clear local media</button>
+        <p>Revocation clears server-side session assets and this preview. It does not prove deletion by a future external provider.
+          A server restart invalidates session credentials.</p>
+      </footer>
+    </main>
+  </body>
+</html>
