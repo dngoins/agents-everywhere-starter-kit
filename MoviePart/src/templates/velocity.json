@@ -1,0 +1,16 @@
+{
+  "id": "VELOCITY",
+  "version": 1,
+  "name": "Velocity",
+  "description": "A sleek, high-energy drive with you in the lead.",
+  "tone": "Confident premium action cinema, never reckless public-road driving.",
+  "camera": "Low exterior tracking, precise machine details, driver reaction, strong hero framing.",
+  "worldTransition": "One coherent closed-course or scenic-road environment with consistent lighting.",
+  "beats": [
+    "Customer approaches the exact car; anticipation and a personal detail.",
+    "Customer enters and activates the car; wardrobe and interior remain consistent.",
+    "Controlled cinematic driving on an empty closed course; customer and car remain recognizable.",
+    "Arrival and a confident product hero reveal, with a subtle approved interest."
+  ],
+  "sound": "Rhythmic cinematic percussion, restrained ignition and movement cues, resolved final hit."
+}

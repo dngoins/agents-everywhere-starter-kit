@@ -42,12 +42,21 @@ An interactive sales robot application designed for a Windows 11 tablet running 
    - Frontend: `http://localhost:5173`
    - Backend API & WebSockets: `http://127.0.0.1:8787`
 
+   Only port 5173 needs to be exposed through a dev tunnel. Vite proxies API
+   and WebSocket traffic to the local-only development backend.
+
 3. **Run Production Build:**
 
    ```bash
    npm run build
    npm start
    ```
+
+   The production server hosts the built frontend, API, and WebSocket endpoint
+   together on port 5173 (or the `PORT` environment variable if provided).
+   If it is placed behind a public HTTPS URL, set `PUBLIC_ORIGIN` to that exact
+   origin (for example, `https://your-tunnel.use2.devtunnels.ms`) before
+   starting it so browser API and WebSocket requests are accepted.
 
 4. **Run Unit and Integration Tests:**
 

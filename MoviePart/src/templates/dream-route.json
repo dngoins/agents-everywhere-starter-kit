@@ -1,0 +1,16 @@
+{
+  "id": "DREAM_ROUTE",
+  "version": 1,
+  "name": "Dream Route",
+  "description": "A beautiful journey toward the things you love.",
+  "tone": "Warm, personal and grounded lifestyle filmmaking.",
+  "camera": "Human details, medium entry shot, peaceful scenic tracking, intimate arrival and product reveal.",
+  "worldTransition": "A physically coherent scenic journey from departure to destination; no unexplained world changes.",
+  "beats": [
+    "Customer prepares a meaningful permitted object or activity beside the selected car.",
+    "Customer loads the object and enters the same vehicle.",
+    "A beautiful scenic drive connects the preparation to a personally relevant destination.",
+    "Customer arrives for a small meaningful moment, with the exact car in the hero composition."
+  ],
+  "sound": "Gentle instrumental bed, natural ambience, restrained road texture and warm final resolution."
+}
