@@ -100,6 +100,7 @@ function App() {
   const [slots, setSlots] = useState([]);
   const generation = useRef(0);
   const captured = useRef(false);
+  const voiceStarting = useRef(false);
   // React state updates are asynchronous. The voice and scanner callbacks must
   // instead read the session identity synchronously, or START will validate the
   // new voice session against the previous render's null customer ID.
@@ -135,6 +136,34 @@ function App() {
     catch (error) { setStatus(error.message || "Bluetooth connection failed"); }
   };
 
+  const connectVoice = async (id, token) => {
+    if (!isCurrent(id, token) || voiceStarting.current || voice.current) return;
+    voiceStarting.current = true;
+    const session = new LiveVoice({
+      audioElement: audio.current,
+      onStatus: (value) => setStatus(value === "ready" ? "Voice connected — say hello" : `Voice ${value}`),
+      onTranscript: (entry) => setTranscript((items) => [...items.slice(-8), entry]),
+      onError: (error) => setStatus(error.message),
+      onTool: tool,
+      isCurrent: () => isCurrent(id, token),
+    });
+    voice.current = session;
+    try {
+      await session.connect({ clientId: initialClient, customerId: id, microphone: stream.current });
+      if (!isCurrent(id, token)) return;
+      session.greet();
+      setCurrentPhase("conversation");
+    } catch (error) {
+      if (voice.current === session) {
+        await session.close();
+        voice.current = null;
+      }
+      throw error;
+    } finally {
+      voiceStarting.current = false;
+    }
+  };
+
   const start = async () => {
     try {
       setStatus("Starting camera and local face detection…");
@@ -154,11 +183,9 @@ function App() {
       generation.current = token;
       setCurrentCustomerId(id);
       captured.current = false;
+      // Listen before uploading the face: that upload schedules the movie event.
       socket.current = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?clientId=${initialClient}`);
       socket.current.onmessage = (event) => { const message = JSON.parse(event.data); if (message.customerId !== id) return; if (message.type === "movie.ready") { setMovie(message.movieUrl); voice.current?.movieReady(id); setStatus("Your private demo video is ready"); } };
-      voice.current = new LiveVoice({ audioElement: audio.current, onStatus: (value) => setStatus(value === "ready" ? "Voice connected — say hello" : `Voice ${value}`), onTranscript: (entry) => setTranscript((items) => [...items.slice(-8), entry]), onError: (error) => setStatus(error.message), onTool: tool, isCurrent: () => isCurrent(id, token) });
-      await voice.current.connect({ clientId: initialClient, customerId: id, microphone: stream.current });
-      voice.current.greet();
       scanLoop();
     } catch (error) { await stopDemo(); setStatus(error.message || "Camera or voice setup failed"); }
   };
@@ -181,19 +208,38 @@ function App() {
   const capture = async () => {
     const activeCustomerId = customerIdRef.current;
     if (!activeCustomerId || !canvas.current || !video.current) return;
+    const token = generation.current;
     captured.current = true;
-    const context = canvas.current.getContext("2d"); canvas.current.width = video.current.videoWidth; canvas.current.height = video.current.videoHeight; context.drawImage(video.current, 0, 0);
-    canvas.current.toBlob(async (blob) => {
-      if (!blob) return;
-      const form = new FormData(); form.set("image", blob, `${activeCustomerId}.jpg`); form.set("clientId", initialClient); form.set("customerId", activeCustomerId);
-      await fetch("/newCustomerFace", { method: "POST", body: form }); setStatus("I found you — preparing a personalized demo…");
-    }, "image/jpeg", 0.88);
-    await robot.current.stop(); setCurrentPhase("conversation");
+    try {
+      const context = canvas.current.getContext("2d");
+      if (!context) throw new Error("Could not capture the camera frame.");
+      canvas.current.width = video.current.videoWidth;
+      canvas.current.height = video.current.videoHeight;
+      context.drawImage(video.current, 0, 0);
+      const blob = await new Promise((resolve) => canvas.current.toBlob(resolve, "image/jpeg", 0.88));
+      if (!blob) throw new Error("Could not capture the camera frame.");
+      const form = new FormData();
+      form.set("image", blob, `${activeCustomerId}.jpg`);
+      form.set("clientId", initialClient);
+      form.set("customerId", activeCustomerId);
+      const response = await fetch("/newCustomerFace", { method: "POST", body: form });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || "Could not create the visitor session.");
+      if (!isCurrent(activeCustomerId, token)) return;
+      setStatus("I found you — connecting voice…");
+      await robot.current.stop();
+      await connectVoice(activeCustomerId, token);
+    } catch (error) {
+      if (isCurrent(activeCustomerId, token)) {
+        captured.current = false;
+        setStatus(error.message || "Could not start the visitor session. Please try again.");
+      }
+    }
   };
 
   const stopDemo = async () => {
-    generation.current += 1; captured.current = false; await robot.current.stop(); await voice.current?.close(); scanner.current?.close(); stream.current?.getTracks().forEach((track) => track.stop()); socket.current?.close();
-    robot.current = createRobot(); scanner.current = null; voice.current = null; setCurrentCustomerId(null); setFace(null); setMovie(null); setPlaying(false); setCurrentPhase("connect"); setStatus("Demo stopped safely");
+    generation.current += 1; captured.current = false; voiceStarting.current = false; await robot.current.stop(); await voice.current?.close(); scanner.current?.close(); stream.current?.getTracks().forEach((track) => track.stop()); socket.current?.close();
+    robot.current = createRobot(); scanner.current = null; voice.current = null; socket.current = null; setCurrentCustomerId(null); setFace(null); setMovie(null); setPlaying(false); setCurrentPhase("connect"); setStatus("Demo stopped safely");
   };
 
   const onMovieEnded = async () => { setPlaying(false); await tool("movie_finished", {}); voice.current?.context("The visitor's demo video has finished. Ask whether they liked it."); setCurrentPhase("conversation"); };
