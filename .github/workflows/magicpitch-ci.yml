@@ -1,0 +1,75 @@
+name: MagicPitch offline checks
+
+on:
+  pull_request:
+    paths:
+      - "FinalProject/**"
+      - ".github/workflows/magicpitch-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "FinalProject/**"
+      - ".github/workflows/magicpitch-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: magicpitch-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Offline verification (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: FinalProject
+    env:
+      MOCK_ONLY: "true"
+      BRIEF_PROVIDER: mock
+      PROFILE_PROVIDER: mock
+      MEDIA_PROVIDER: mock
+      JOB_PROVIDER: local
+      FOLLOWUP_PROVIDER: disabled
+      ALLOW_DEMO_FALLBACKS: "false"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Set up pinned Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24.11.0"
+          cache: npm
+          cache-dependency-path: FinalProject/package-lock.json
+      - name: Pin npm
+        run: npm install --global npm@11.6.2 --ignore-scripts
+      - name: Show toolchain
+        run: |
+          node --version
+          npm --version
+      - name: Restore lockfile dependencies
+        run: npm ci
+      - name: Typecheck, test, build, and smoke
+        run: npm run verify
+      - name: Package synthetic demo
+        if: runner.os == 'Linux'
+        run: npm run package:demo
+      - name: Upload allowlisted runtime package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: magicpitch-synthetic-demo
+          path: |
+            FinalProject/artifacts/magicpitch-demo.tgz
+            FinalProject/artifacts/magicpitch-demo.sha256
+          if-no-files-found: error
+          retention-days: 7

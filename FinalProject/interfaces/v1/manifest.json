@@ -1,0 +1,26 @@
+{
+  "contractVersion": 1,
+  "sourceHashNormalization": "LF",
+  "sourceHashes": {
+    "src/contracts/index.ts": "f74ad382d8cc9a2d63d2c5ebb7b366a219e65ced95930f37ac5511d17a4ef889",
+    "src/contracts/media.ts": "95470937f724d538e784c28a9540152bd388717ee60b229e3724adc49be5f197",
+    "src/contracts/transport.ts": "e255d513dc4c8721c15068c5bb9960cb214c92a4def7246a96993aaee6469728",
+    "src/providers/interfaces.ts": "f52d226576628d7f7c6bebbe6968161bb0aa717a3fa14994671a43038e7a63d2"
+  },
+  "generatedFiles": {
+    "types.d.ts": "cfbaaf76a286a95e95b5b0d34862cf6dd46c801867d7d45cb3e25167ddb7f627",
+    "contracts.schema.json": "d3f218b1442ddd63632222c5ae267bb49e44fd1024635da14b60322ac6926411",
+    "orchestrator.openapi.json": "52529be7c0bdadd4ad17a015afbab029747028f3adc46feea6879c307fbce8ae",
+    "media-service.openapi.json": "b597d98ab5a25aad95ee8ba478908816a668ed305cefda682213af1b380ec0df",
+    "examples.json": "4f81324b923f87bfb2bbeffb16a3affd897597426fb28ba4919528828c73fc1f"
+  },
+  "runtimeRules": [
+    "Consent and ownership",
+    "State transitions",
+    "Idempotency and queue/deadline bounds",
+    "Scene durations sum to total",
+    "Media service idempotency key equals the globally unique job ID",
+    "Public-profile URL policy",
+    "Provider output validation"
+  ]
+}
