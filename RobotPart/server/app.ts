@@ -109,7 +109,8 @@ export function createApp(options: AppOptions = {}): RobotApp {
   });
 
   const upload = multer({ storage: multer.memoryStorage(), limits: {
-    fileSize: MAX_IMAGE_BYTES, files: 1, fields: 2, parts: 3, fieldSize: 100, fieldNameSize: 40,
+    // Busboy can emit partsLimit as the limit is reached; fields/files enforce the exact shape.
+    fileSize: MAX_IMAGE_BYTES, files: 1, fields: 2, parts: 4, fieldSize: 100, fieldNameSize: 40,
   } }).single('image');
   app.post('/newCustomerFace', (request, response, next) => {
     // Normalize all multipart parse errors too (including malformed boundaries).
@@ -171,6 +172,7 @@ export function createApp(options: AppOptions = {}): RobotApp {
   app.use((_request, _response, next) => next(new HttpError(404, 'Not found.')));
   const errors: ErrorRequestHandler = (error: unknown, _request, response, _next) => {
     if (response.headersSent) { response.destroy(); return; }
+    response.type('json'); // Static/range failures may already have selected video/mp4.
     if (error instanceof HttpError) { response.status(error.status).json({ error: error.message }); return; }
     if (error instanceof z.ZodError || error instanceof multer.MulterError || error instanceof SyntaxError
       || error instanceof URIError) {

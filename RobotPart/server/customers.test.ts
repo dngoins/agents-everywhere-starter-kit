@@ -37,9 +37,11 @@ test('upload saves actual rotated, resized JPEG; delay starts after save and nev
 
 test('reject invalid/empty/oversized files, invalid UUIDs, unknown fields and malformed multipart', { timeout: 10_000 }, async (t) => {
   const h = await fixture(t);
-  for (const bytes of [Buffer.alloc(0), Buffer.from('not an image'),
-    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'), Buffer.alloc(MAX_IMAGE_BYTES + 1)]) {
-    const result = await h.upload(CUSTOMER_A, CLIENT_A, bytes);
+  const invalidImages = [Buffer.alloc(0), Buffer.from('not an image'),
+    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'), Buffer.alloc(MAX_IMAGE_BYTES + 1)];
+  for (const [index, bytes] of invalidImages.entries()) {
+    const id = `dddddddd-dddd-4ddd-8ddd-${String(index).padStart(12, '0')}`;
+    const result = await h.upload(id, CLIENT_A, bytes);
     assert.equal(result.status, 400);
     assert.equal(typeof result.body.error, 'string');
   }
@@ -49,6 +51,9 @@ test('reject invalid/empty/oversized files, invalid UUIDs, unknown fields and ma
   const form = new FormData();
   form.set('clientId', CLIENT_A);
   form.set('customerId', CUSTOMER_B);
+  assert.equal((await fetch(`${h.base}/newCustomerFace`, { method: 'POST', body: form })).status, 400);
+  form.set('image', new Blob([new Uint8Array(h.image)]), 'image.png');
+  form.set('unexpected', 'extra-field');
   assert.equal((await fetch(`${h.base}/newCustomerFace`, { method: 'POST', body: form })).status, 400);
   const malformed = await fetch(`${h.base}/newCustomerFace`, {
     method: 'POST', headers: { 'Content-Type': 'multipart/form-data; boundary=missing' }, body: 'malformed',
