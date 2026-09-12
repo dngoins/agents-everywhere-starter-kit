@@ -11,11 +11,11 @@
     },
     "exterior": {
       "color": "REPLACE_WITH_REAL_CAR_COLOR",
-      "wheels": "Dark-finish multi-spoke alloy wheels (reference shots show two closely related sport designs — an open turbine-spoke wheel and a denser aero-spoke wheel), low-profile tires, red brake calipers visible behind the spokes",
-      "front_end": "Smooth, closed-off front fascia with no visible upper grille opening; slim full-width LED headlight strips flanking a low, sloped hood; narrow lower bumper intake vents; centered Tesla 'T' badge on the nose",
+      "wheels": "20-inch dark turbine-style Performance wheels with low-profile tires and red Performance brake calipers visible behind the spokes",
+      "front_end": "Closed body-color nose and smooth front fascia with lower air intakes and no grille; separate pre-Highland headlights matching the reference photos, no full-width light strip; centered Tesla 'T' badge on the nose",
       "profile": "Low, coupe-like fastback sedan silhouette with a sloping roofline, short front overhang, flush door handles, and a subtle character line running along the lower doors",
-      "roof": "Full-length glass panoramic roof panel with black trim and pillars, no visible seams, rails, or sunroof opening",
-      "badging": "Tesla 'T' logo centered on the front nose; 'TESLA' wordmark badge centered on the rear trunk lid; full-width red LED tail light bar connecting the rear lamps; no separate trim badge visible"
+      "roof": "Full glass panoramic roof with black trim and pillars, matching the reference photos",
+      "badging": "Tesla 'T' logo centered on the front nose; small Tesla 'T' logo on the rear trunk; separate wraparound LED taillights matching the reference photos; no full-width rear light bar and no 'TESLA' wordmark on the trunk"
     },
     "interior": {
       "steering": "Traditional round two-spoke steering wheel (not a yoke) with a centered Tesla 'T' badge and physical scroll-wheel/button controls on each spoke",
