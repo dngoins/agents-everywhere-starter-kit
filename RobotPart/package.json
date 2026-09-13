@@ -15,6 +15,7 @@
     "postinstall": "npm run assets"
   },
   "dependencies": {
+    "@magicpitch/showroom-runtime": "file:../packages/showroom-runtime",
     "@mediapipe/tasks-vision": "^0.10.32",
     "express": "^5.1.0",
     "luxon": "^3.7.2",
