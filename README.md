@@ -10,7 +10,7 @@ Movie production runs in the background while the robot continues the showroom c
 
 > **Current scope:** the repository contains runnable components and integration contracts, not a claim that every physical, live-generation, and scheduling step is deployed together. The robot's standalone movie is prerecorded; the orchestrator uses a synthetic roster and your supplied prerecorded example as its default movie. Live generation needs configured accounts and authorized assets. No encounter-time guarantee is implied.
 
-[Architecture and design](docs/architecture.md) | [Movie studio and kiosk](MoviePart/README.md) | [Orchestrator](FinalProject/README.md) | [Robot setup](RobotPart/README.md) | [Teammate interfaces](FinalProject/interfaces/v1/README.md)
+[Architecture and design](docs/architecture.md) | [Trusted HTTPS and operator deployment](docs/showroom-https.md) | [Movie studio and kiosk](MoviePart/README.md) | [Orchestrator](FinalProject/README.md) | [Robot setup](RobotPart/README.md) | [Teammate interfaces](FinalProject/interfaces/v1/README.md)
 
 ## The customer experience
 
@@ -28,6 +28,7 @@ flowchart LR
     Robot["RobotPart<br/>Tablet, camera, voice and PadBot BLE"]
     RobotAPI["Robot demo backend<br/>Prerecorded movie and mock booking"]
     Kiosk["MoviePart /kiosk<br/>Consent, brief, progress and playback"]
+    Gateway["MoviePart /api/showroom<br/>Fixed private-upstream gateway"]
     Orchestrator["FinalProject<br/>Session and workflow authority"]
     Media["MoviePart media service<br/>Brief-driven rendering and cleanup"]
     Studio["MoviePart /<br/>Independent creator studio"]
@@ -43,7 +44,8 @@ flowchart LR
     Robot <-->|"WebRTC audio"| Voice
     Robot -. "Trusted shared-session bridge: integration boundary" .-> Orchestrator
     Visitor --> Kiosk
-    Kiosk -->|"Session capability"| Orchestrator
+    Kiosk -->|"Same-origin HTTPS; session capability"| Gateway
+    Gateway -->|"Allowlisted HTTP routes only"| Orchestrator
     Orchestrator -->|"HTTP media mode: service token"| Media
     Visitor --> Studio
     Studio --> Worker
@@ -80,6 +82,15 @@ See the [detailed design](docs/architecture.md) for sequence diagrams, job lifec
 | Media service | `http://127.0.0.1:3201` | Server-to-server asynchronous rendering; not a browser UI |
 
 Ports are local defaults, not a hosted deployment. The browser and backend must agree on exact origins; `localhost` and `127.0.0.1` are different origins. A separate tablet needs an explicitly configured reachable address, pairing, and trusted HTTPS where browser APIs require it.
+
+The showroom integration gateway is `/api/showroom` on MoviePart: the iPad uses
+one trusted HTTPS origin, while FinalProject and studio processes stay private
+on loopback. The [deployment guide](docs/showroom-https.md) documents its exact
+route allowlist, one-time pairing, Windows-only local operator bridge, and
+independent launcher flags. `--ui-port 3202` remains supported; no live voice,
+film generation, calendar write or physical enablement is inferred from stored
+credentials. The full-studio option runs the creator worker, not the legacy
+dedicated media service.
 
 ### Start the offline orchestrator
 
