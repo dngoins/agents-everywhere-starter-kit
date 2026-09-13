@@ -22,7 +22,7 @@ export function showroomPrompt(state: ShowroomState) {
   const step = showroomStep(state);
   const snapshot = state.snapshot;
   const prompts: Record<ShowroomStep, { title: string; message: string }> = {
-    pair: { title: "Hello, I'm here with you.", message: "Your operator will connect us. Then we can talk about a film made around you." },
+    pair: { title: "Hello, I'm here with you.", message: "Your operator will connect us. Are you interested in a Car??? Let's talk." },
     consent: { title: "You're in control.", message: "Before any photos, let's agree how your information and likeness may be used. You can say no." },
     visitor: { title: "Nice to meet you.", message: "What name would you like me to use?" },
     context: { title: "Let's make it yours.", message: "What do you enjoy, or where would you like this drive to take you?" },
