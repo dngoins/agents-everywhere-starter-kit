@@ -10,3 +10,4 @@ demo-data/private/
 *.tsbuildinfo
 coverage/
 *.log
+public/showroom-models/
