@@ -62,7 +62,7 @@ function positiveLimit(value: number, maximum: number) {
   return value;
 }
 
-async function boundedBody(request: Request, limit: number, signal: AbortSignal): Promise<Uint8Array> {
+async function boundedBody(request: Pick<Request, "headers" | "body">, limit: number, signal: AbortSignal): Promise<Uint8Array> {
   const length = request.headers.get("content-length");
   if (length !== null && (!/^\d+$/.test(length) || Number(length) > limit)) {
     throw new GatewayError(413, "BODY_TOO_LARGE", "The request exceeds the upload limit.");
@@ -91,6 +91,21 @@ async function boundedBody(request: Request, limit: number, signal: AbortSignal)
     signal.removeEventListener("abort", abort);
     reader.releaseLock();
   }
+}
+
+async function upstreamErrorCode(response: Response, signal: AbortSignal) {
+  if (response.status !== 409) return "SHOWROOM_REQUEST_FAILED";
+  try {
+    const bytes = await boundedBody(response, 4096, signal);
+    const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (payload && typeof payload === "object" && "error" in payload &&
+        payload.error && typeof payload.error === "object" && "code" in payload.error &&
+        payload.error.code === "REVISION_CONFLICT") return "REVISION_CONFLICT";
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // An unreadable or oversized error is not proof that an action was rejected before acceptance.
+  }
+  return "SHOWROOM_REQUEST_FAILED";
 }
 
 function responseStream(body: ReadableStream<Uint8Array>, limit: number, signal: AbortSignal, cleanup: () => void) {
@@ -216,12 +231,15 @@ export async function showroomGateway(request: Request, options: ShowroomGateway
       throw new GatewayError(502, "UPSTREAM_REDIRECT", "The showroom service returned an unexpected redirect.");
     }
     if (!response.ok) {
+      const code = await upstreamErrorCode(response, controller.signal);
       await response.body?.cancel();
       cleanup();
       if (response.status === 416) {
         return new Response(null, { status: 416, headers: resultHeaders });
       }
-      return failure(response.status, "SHOWROOM_REQUEST_FAILED", "The showroom service could not complete this request.");
+      return failure(response.status, code, code === "REVISION_CONFLICT"
+        ? "Refresh the showroom before retrying this action."
+        : "The showroom service could not complete this request.");
     }
     const length = response.headers.get("content-length");
     if (length && (!/^\d+$/.test(length) || Number(length) > responseLimit)) {
