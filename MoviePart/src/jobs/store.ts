@@ -7,6 +7,7 @@ import type { Readiness } from "../domain/http";
 import { atomicWrite, isMissing, processAlive, readJson, withDiskLock } from "../server/files";
 import type { LocalMediaRepository } from "../server/media";
 import { retrySummary, validateSavedPlan } from "./retry";
+import { assertJobNotCancelled, jobReceiptSchema, referencedAssets, type JobReceipt } from "./lifecycle";
 
 export const WORKER_HEARTBEAT_MS = 3_000;
 export const WORKER_STALE_MS = 15_000;
@@ -62,27 +63,74 @@ export class JobStore {
   }
 
   async findIdempotent(ownerId: string, request: JobRequest): Promise<MovieJob | null> {
-    const index = await readJson(this.idempotencyPath(ownerId, request.idempotency_key)).catch(error => {
-      if (isMissing(error)) return null;
-      throw error;
-    });
-    if (index) {
-      const entry = z.object({ jobId: z.uuid(), fingerprint: z.string() }).strict().parse(index);
+    const entry = await this.receipt(ownerId, request.idempotency_key);
+    if (entry) {
+      if (entry.cancelledAt) throw new MovieError("JOB_CANCELLED", "This movie request was cancelled and cannot be restarted.", 410);
       if (entry.fingerprint !== requestFingerprint(request)) {
         throw new MovieError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different request.", 409);
       }
-      try { return await this.getOwned(entry.jobId, ownerId); } catch (error) {
+      try { return await this.getOwned(entry.jobId!, ownerId); } catch (error) {
         if (error instanceof MovieError && error.code === "JOB_NOT_FOUND") {
           throw new MovieError("JOB_DELETED", "This request's job was deleted. Use a new idempotency key only to intentionally create another movie.", 410);
         }
         throw error;
       }
     }
-    const existing = (await this.list()).find(job => job.ownerId === ownerId && job.request.idempotency_key === request.idempotency_key);
-    if (existing && requestFingerprint(existing.request) !== requestFingerprint(request)) {
-      throw new MovieError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different request.", 409);
-    }
-    return existing ?? null;
+    return null;
+  }
+
+  async receipt(ownerId: string, key: string): Promise<JobReceipt | null> {
+    const index = await readJson(this.idempotencyPath(ownerId, key)).catch(error => {
+      if (isMissing(error)) return null;
+      throw error;
+    });
+    if (index) return jobReceiptSchema.parse(index);
+    const existing = (await this.list()).find(job => job.ownerId === ownerId && job.request.idempotency_key === key);
+    return existing ? { jobId: existing.id, fingerprint: requestFingerprint(existing.request) } : null;
+  }
+
+  async cancelOwnedRequest(ownerId: string, key: string, media: LocalMediaRepository): Promise<JobReceipt> {
+    return this.transaction(async () => {
+      const previous = await this.receipt(ownerId, key);
+      const receipt: JobReceipt = {
+        ...previous, jobId: previous?.jobId ?? null, fingerprint: previous?.fingerprint ?? null,
+        cancelledAt: previous?.cancelledAt ?? new Date().toISOString(), assetsDeleted: previous?.assetsDeleted ?? false,
+      };
+      // Commit the fence before touching the manifest or assets; a late POST can never revive this key.
+      await atomicWrite(this.idempotencyPath(ownerId, key), JSON.stringify(receipt));
+      const job = receipt.jobId ? await this.getOwned(receipt.jobId, ownerId).catch(error => {
+        if (error instanceof MovieError && error.code === "JOB_NOT_FOUND") return null;
+        throw error;
+      }) : null;
+      if (job) {
+        if (job.error?.code !== "JOB_CANCELLED") {
+          job.error = { code: "JOB_CANCELLED", message: "The owner cancelled this movie. Cleanup waits for active work to settle.", stage: job.status };
+          job.status = "FAILED";
+          job.updatedAt = receipt.cancelledAt!;
+          job.events.push({ at: job.updatedAt, stage: "FAILED", message: job.error.message, provider: null, shotId: null });
+          await this.write(job);
+        }
+        await rm(this.queue(job.id, "pending"), { force: true });
+        if (await this.isClaimed(job.id)) return receipt;
+        receipt.assetsDeleted = await this.cleanupJob(job, media);
+      } else {
+        receipt.assetsDeleted = true;
+      }
+      await atomicWrite(this.idempotencyPath(ownerId, key), JSON.stringify(receipt));
+      return receipt;
+    });
+  }
+
+  private async isClaimed(id: string): Promise<boolean> {
+    return !!await stat(this.queue(id, "claimed")).catch(error => {
+      if (isMissing(error)) return null;
+      throw error;
+    });
+  }
+
+  async isCancellationRequested(id: string): Promise<boolean> {
+    const job = await this.get(id);
+    return !!(await this.receipt(job.ownerId, job.request.idempotency_key))?.cancelledAt;
   }
 
   async create(ownerId: string, request: JobRequest, product: ProductReference, verifyReferences?: () => Promise<void>): Promise<MovieJob> {
@@ -107,6 +155,8 @@ export class JobStore {
 
   async findRetry(id: string, ownerId: string, request: RetryRequest): Promise<{ job: MovieJob; attempt: number } | null> {
     const job = await this.getOwned(id, ownerId);
+    assertJobNotCancelled(job);
+    if (await this.isCancellationRequested(id)) throw new MovieError("JOB_CANCELLED", "This movie was cancelled.", 410);
     const index = job.retries?.findIndex(retry => retry.idempotencyKey === request.idempotency_key) ?? -1;
     if (index < 0) return null;
     if (job.retries![index].expectedAttempt !== request.expected_attempt ||
@@ -124,6 +174,7 @@ export class JobStore {
       const previous = await this.findRetry(id, ownerId, request);
       if (previous) return previous;
       const job = await this.getOwned(id, ownerId);
+      assertJobNotCancelled(job);
       if (request.expected_attempt !== (job.retries?.length ?? 0)) {
         throw new MovieError("STALE_RETRY", "Another retry was already accepted. Refresh this movie before authorizing another attempt.", 409);
       }
@@ -176,6 +227,8 @@ export class JobStore {
     const request = frameDecisionRequestSchema.parse(input);
     return this.transaction(async () => {
       const job = await this.getOwned(id, ownerId);
+      assertJobNotCancelled(job);
+      if (await this.isCancellationRequested(id)) throw new MovieError("JOB_CANCELLED", "This movie was cancelled.", 410);
       const previous = job.designerDecisions?.find(item => item.request.idempotency_key === request.idempotency_key);
       if (previous) {
         if (previous.assetId !== assetId || canonical(previous.request) !== canonical(request)) {
@@ -227,6 +280,9 @@ export class JobStore {
   async update(id: string, mutate: (job: MovieJob) => void): Promise<MovieJob> {
     return this.transaction(async () => {
       const job = await this.get(id);
+      if ((await this.receipt(job.ownerId, job.request.idempotency_key))?.cancelledAt) {
+        throw new MovieError("JOB_CANCELLED", "This movie was cancelled.", 410);
+      }
       mutate(job);
       job.updatedAt = new Date().toISOString();
       await this.write(job);
@@ -286,6 +342,11 @@ export class JobStore {
       await mkdir(claimedDirectory, { recursive: true, mode: 0o700 });
       const claimed = new Set((await readdir(claimedDirectory)).filter(file => file.endsWith(".json")).map(file => file.slice(0, -5)));
       for (const job of await this.list()) {
+        if ((await this.receipt(job.ownerId, job.request.idempotency_key))?.cancelledAt) {
+          job.error = { code: "JOB_CANCELLED", message: "The owner cancelled this movie.", stage: job.status };
+          job.status = "FAILED";
+          await this.write(job);
+        }
         if (!terminal(job) && (claimed.has(job.id) || job.status !== "RECEIVED")) {
           const stage = job.status;
           job.status = "FAILED";
@@ -312,6 +373,7 @@ export class JobStore {
       if ((await readdir(claimedDirectory)).some(file => file.endsWith(".json"))) return null;
       const jobs = (await this.list()).filter(job => job.status === "RECEIVED").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       for (const job of jobs) {
+        if ((await this.receipt(job.ownerId, job.request.idempotency_key))?.cancelledAt) continue;
         try { await rename(this.queue(job.id, "pending"), this.queue(job.id, "claimed")); } catch (error) {
           if (!isMissing(error)) throw error;
           // A crash after the manifest commit but before queue publication must not strand an unpaid job.
@@ -340,26 +402,32 @@ export class JobStore {
     await this.transaction(async () => {
       const job = await this.getOwned(id, ownerId);
       if (!terminal(job)) throw new MovieError("JOB_ACTIVE", "Only completed or failed jobs can be deleted.", 409);
+      if (await this.isClaimed(id)) throw new MovieError("JOB_ACTIVE", "The worker is still settling this movie.", 409);
+      const receipt = await this.receipt(ownerId, job.request.idempotency_key);
       await atomicWrite(this.idempotencyPath(ownerId, job.request.idempotency_key), JSON.stringify({
-        jobId: job.id, fingerprint: requestFingerprint(job.request),
+        ...receipt, jobId: job.id, fingerprint: requestFingerprint(job.request),
       }));
-      const remaining = (await this.list()).filter(other => other.id !== id);
-      const referenced = new Set(remaining.flatMap(other => [
-        ...other.request.customer_reference_asset_ids, ...other.product.referenceImages.map(ref => ref.assetId),
-        ...other.frames.map(frame => frame.assetId), ...(other.character?.sourceImages.map(ref => ref.assetId) ?? []),
-        ...(other.sceneFrames?.map(frame => frame.assetId) ?? []),
-        ...(other.hero ? [other.hero.assetId] : []), ...(other.result ? [other.result.assetId] : []),
-        ...(other.videoSegments ?? []).flatMap(segment => [
-          ...(segment.clip ? [segment.clip.assetId] : []), ...(segment.startFrameAssetId ? [segment.startFrameAssetId] : []),
-        ]),
-      ]));
-      for (const asset of await media.listAssets()) {
-        const belongsToDeletedJob = asset.jobId === id || job.request.customer_reference_asset_ids.includes(asset.id);
-        if (asset.ownerId === ownerId && belongsToDeletedJob && !referenced.has(asset.id)) await media.deleteOwned(asset.id, ownerId);
-      }
-      await rm(this.queue(id, "pending"), { force: true });
-      await rm(this.queue(id, "claimed"), { force: true });
-      await rm(this.manifest(id), { force: true });
+      await this.cleanupJob(job, media, true);
     });
+  }
+
+  private async cleanupJob(job: MovieJob, media: LocalMediaRepository, legacyDelete = false): Promise<boolean> {
+    const referenced = new Set<string>();
+    for (const other of (await this.list()).filter(other => other.id !== job.id)) {
+      if (other.error?.code !== "JOB_CANCELLED" || await this.isClaimed(other.id)) {
+        for (const id of referencedAssets(other)) referenced.add(id);
+      }
+    }
+    let deleted = true;
+    for (const asset of await media.listAssets()) {
+      if (asset.ownerId !== job.ownerId || !(asset.jobId === job.id || job.request.customer_reference_asset_ids.includes(asset.id))) continue;
+      if (referenced.has(asset.id)) deleted = false;
+      else await media.deleteOwned(asset.id, job.ownerId);
+    }
+    if (deleted || legacyDelete) {
+      await rm(this.queue(job.id, "pending"), { force: true });
+      await rm(this.manifest(job.id), { force: true });
+    }
+    return deleted;
   }
 }
