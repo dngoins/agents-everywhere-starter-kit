@@ -1,7 +1,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AcceptedStudioSnapshotSchema } from '../src/contracts/showroom.js';
 import { createStudioProvider } from '../src/providers/studio.js';
@@ -183,4 +183,54 @@ test('staged MP4 validation decodes the exact real 720p timeline and rejects a d
   const bytes = new Uint8Array(await readFile(new URL('../fixtures/media/default-demo.mp4', import.meta.url)));
   await validateStudioVideo(bytes, 10, new AbortController().signal, { directory: resolve(directory, 'validation') });
   await assert.rejects(validateStudioVideo(bytes, 15, new AbortController().signal, { directory: resolve(directory, 'validation') }), /promised 720p/);
+});
+
+test('pending cleanup cannot move to a different credential or studio origin after restart', async t => {
+  const behavior = { cleanupPending: 10 };
+  const f = await fixture(t, behavior);
+  await assert.rejects(f.provider.generate(f.snapshot, f.photos, new AbortController().signal, () => {}), /deletion is not confirmed/);
+  const filename = resolve(f.directory, `${f.snapshot.snapshotId}.json`);
+  const original = await readFile(filename, 'utf8');
+  const receipt = JSON.parse(original);
+  assert.match(receipt.ownerFingerprint, /^[a-f0-9]{64}$/);
+  assert.doesNotMatch(original, /fake-studio-token/);
+  for (const changed of [
+    { baseUrl: 'http://127.0.0.1:3200', token: 'rotated-studio-token' },
+    { baseUrl: 'http://127.0.0.1:3299', token: 'fake-studio-token' },
+  ]) {
+    let calls = 0;
+    const restarted = createStudioProvider({
+      ...changed, directory: f.directory, fetch: async () => {
+        calls++; return Response.json({ receipt: { jobId: null, fingerprint: null, assetsDeleted: true } });
+      },
+    });
+    await assert.rejects(restarted.recoverCleanup(), error =>
+      error instanceof ProviderFailure && error.code === 'STUDIO_CLEANUP_OWNER_MISMATCH' && error.acceptanceUncertain);
+    assert.equal(calls, 0);
+    assert.equal(await readFile(filename, 'utf8'), original);
+  }
+  behavior.cleanupPending = 0;
+  await f.provider.recoverCleanup();
+  assert.equal(JSON.parse(await readFile(filename, 'utf8')).cleanupRequired, false);
+  assert.equal(f.counts().jobPosts, 1);
+});
+
+test('legacy unbound pending receipts fail closed rather than trusting empty-owner tombstones', async t => {
+  const f = await fixture(t, { cleanupPending: 10 });
+  await assert.rejects(f.provider.generate(f.snapshot, f.photos, new AbortController().signal, () => {}), /deletion is not confirmed/);
+  const filename = resolve(f.directory, `${f.snapshot.snapshotId}.json`);
+  const receipt = JSON.parse(await readFile(filename, 'utf8'));
+  delete receipt.ownerFingerprint;
+  await writeFile(filename, JSON.stringify(receipt));
+  let calls = 0;
+  const restarted = createStudioProvider({
+    baseUrl: 'http://127.0.0.1:3200', token: 'fake-studio-token', directory: f.directory,
+    fetch: async () => { calls++; throw new Error('An unbound pending receipt must not send cleanup requests.'); },
+  });
+  await assert.rejects(restarted.recoverCleanup(), error => error instanceof ProviderFailure && error.code === 'STUDIO_CLEANUP_OWNER_MISMATCH');
+  assert.equal(calls, 0);
+  assert.equal(JSON.parse(await readFile(filename, 'utf8')).cleanupRequired, true);
+  await writeFile(filename, JSON.stringify({ ...receipt, cleanupRequired: false }));
+  await restarted.recoverCleanup();
+  assert.equal(calls, 0);
 });
