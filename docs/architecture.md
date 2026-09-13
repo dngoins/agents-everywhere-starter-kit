@@ -191,7 +191,7 @@ flowchart LR
 
 Movie-first skips the continuity critic; it does not mark unreviewed images as approved. Intermediate visuals are saved privately as scene inputs. Only after encoding does the displayed storyboard populate with `source: extracted`, a timestamp, and `NOT_REVIEWED` metadata. An extraction-only failure preserves the MP4 and can resume without more model calls. In the current image-provider setup, the film is accurately labeled animated-image output, not fully generated moving footage.
 
-The following diagram describes the optional **reviewed-storyboard** path:
+The following diagram describes the **legacy storyboard-layout path** for callers that leave the video provider optional. The studio's required-video bookend path above does not substitute stills when animation is unavailable:
 
 ```mermaid
 flowchart TD
@@ -306,6 +306,8 @@ flowchart LR
 The worker reuses saved character analysis and the director plan. Every new approval is checkpointed before progressing, so a second failure still preserves prior work. A previously attempted optional hero video is not resubmitted merely because final assembly is being retried. Missing approved media blocks the retry rather than silently regenerating it. This recovery endpoint is separate from the media service's cancellation and tombstone protocol.
 
 Required Veo retries resume the recorded Google operation, skipping endpoint generation and new video submission. Download and continuity validation can run again against that existing output; validation failures retain their actionable provider error instead of being replaced by a generic missing-animation message.
+
+For longer cuts, each `videoSegments` entry separately checkpoints its submission guard, operation ID, continuation-frame asset, and approved clip. A known operation can be recovered even if the segment checkpoint was interrupted after the global operation receipt. Completed clips are never regenerated on retry; an uncertain paid submission without an ID blocks new submissions. The existing creator-studio endpoints carry these additive duration/progress fields; no parallel generation API is introduced.
 
 ### Designer authority and practical approval
 

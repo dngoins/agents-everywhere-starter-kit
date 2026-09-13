@@ -8,7 +8,7 @@ test("the example environment uses supported, secret-free settings and safe priv
   const example = parseEnv(await readFile(".env.example", "utf8"));
   const before = process.env;
   try {
-    process.env = { ...example };
+    process.env = { ...example, NODE_ENV: "test" };
     const config = loadConfig();
     assert.equal(config.openaiKey, undefined);
     assert.equal(config.googleKey, undefined);

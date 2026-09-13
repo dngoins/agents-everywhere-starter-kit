@@ -628,45 +628,6 @@ test("continuation references use exact normalized frame 191 and reject unowned 
       label: "Normalize synthetic expected continuation", timeoutMs: 120_000,
     });
 
-    test("additional clips fail closed on ownership, provider, duplicate IDs, missing files and corrupt or short video", { timeout: 120_000 }, async () => {
-      const root = resolve(`.multi-clip-failure-test-${randomUUID()}`);
-      const sample = await mediaFixture(root, "six-shot");
-      const first = join(root, "first.mp4");
-      const second = join(root, "second.mp4");
-      const continuation = { ...sample.input.hero!, assetId: randomUUID() };
-      sample.input.movieDurationSeconds = 18;
-      sample.input.videoClips = [sample.input.hero!, continuation];
-      sample.paths.set(sample.input.hero!.assetId, first);
-      sample.paths.set(continuation.assetId, second);
-      try {
-        await syntheticClip(first);
-        const renderer = createRenderer(sample.config);
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("RENDER_FAILED"));
-        await writeFile(second, "corrupt continuation");
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("RENDER_FAILED"));
-        await runMediaCommand(ffmpeg!, [
-          "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-          "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=24:duration=1",
-          "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", mediaCommandPath(second),
-        ], { label: "Create incomplete synthetic continuation", timeoutMs: 60_000 });
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("RENDER_INVALID_OUTPUT"));
-        const owned = await sample.context.media.getAsset(continuation.assetId);
-        sample.records.set(continuation.assetId, { ...owned, ownerId: "another-owner" });
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("ASSET_NOT_FOUND"));
-        sample.records.set(continuation.assetId, { ...owned, jobId: randomUUID() });
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("ASSET_NOT_FOUND"));
-        sample.input.videoClips = [sample.input.hero!, { ...continuation, provider: "OpenAI Sora" }];
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("INVALID_RENDER_INPUT"));
-        sample.input.videoClips = [sample.input.hero!, sample.input.hero!];
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("INVALID_RENDER_INPUT"));
-        sample.input.videoClips = [sample.input.hero!];
-        await assert.rejects(renderer.render(sample.input, sample.context), hasCode("ANIMATION_REQUIRED"));
-        assert.equal(sample.saved.length, 0);
-        assert.deepEqual(await readdir(join(root, "render-tmp")), []);
-      } finally {
-        await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-      }
-    });
     await runMediaCommand(ffmpeg!, buildBookendExtractionArguments(normalized, expected, "closing"), {
       label: "Extract synthetic expected continuation", timeoutMs: 60_000,
     });
@@ -679,6 +640,46 @@ test("continuation references use exact normalized frame 191 and reject unowned 
     await rm(source);
     await assert.rejects(createContinuationReference(sample.config, sample.input.hero!, sample.context), hasCode("RENDER_FAILED"));
     assert.equal(sample.saved.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+});
+
+test("additional clips fail closed on ownership, provider, duplicate IDs, missing files and corrupt or short video", { timeout: 120_000 }, async () => {
+  const root = resolve(`.multi-clip-failure-test-${randomUUID()}`);
+  const sample = await mediaFixture(root, "six-shot");
+  const first = join(root, "first.mp4");
+  const second = join(root, "second.mp4");
+  const continuation = { ...sample.input.hero!, assetId: randomUUID() };
+  sample.input.movieDurationSeconds = 18;
+  sample.input.videoClips = [sample.input.hero!, continuation];
+  sample.paths.set(sample.input.hero!.assetId, first);
+  sample.paths.set(continuation.assetId, second);
+  try {
+    await syntheticClip(first);
+    const renderer = createRenderer(sample.config);
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("RENDER_FAILED"));
+    await writeFile(second, "corrupt continuation");
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("RENDER_FAILED"));
+    await runMediaCommand(ffmpeg!, [
+      "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+      "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=24:duration=1",
+      "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", mediaCommandPath(second),
+    ], { label: "Create incomplete synthetic continuation", timeoutMs: 60_000 });
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("RENDER_INVALID_OUTPUT"));
+    const owned = await sample.context.media.getAsset(continuation.assetId);
+    sample.records.set(continuation.assetId, { ...owned, ownerId: "another-owner" });
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("ASSET_NOT_FOUND"));
+    sample.records.set(continuation.assetId, { ...owned, jobId: randomUUID() });
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("ASSET_NOT_FOUND"));
+    sample.input.videoClips = [sample.input.hero!, { ...continuation, provider: "OpenAI Sora" }];
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("INVALID_RENDER_INPUT"));
+    sample.input.videoClips = [sample.input.hero!, sample.input.hero!];
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("INVALID_RENDER_INPUT"));
+    sample.input.videoClips = [sample.input.hero!];
+    await assert.rejects(renderer.render(sample.input, sample.context), hasCode("ANIMATION_REQUIRED"));
+    assert.equal(sample.saved.length, 0);
+    assert.deepEqual(await readdir(join(root, "render-tmp")), []);
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
