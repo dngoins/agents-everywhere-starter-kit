@@ -9,38 +9,84 @@ Tiya's reference-led movie studio and showroom kiosk for MagicPitch. The creator
 | Surface | Local address | Authentication | Start |
 |---|---|---|---|
 | Creator studio | `http://127.0.0.1:3200/` | Local browser session or `MOVIE_API_TOKEN` | `npm run dev` plus `npm run worker` |
-| Showroom kiosk | `http://127.0.0.1:3200/kiosk` | Dwight device pairing, then shared session capability | `npm run dev`; Dwight API runs separately on 3101 |
+| Showroom kiosk | `http://127.0.0.1:3200/kiosk` (desktop only) | One-time operator code, then in-memory session capability | Integrated launcher and trusted iPad HTTPS origin; see [setup](../docs/showroom-https.md) |
 | Dwight-to-Tiya media service | `http://127.0.0.1:3201` | Server-only `MEDIA_SERVICE_TOKEN` | `npm run media-service` |
 
 The kiosk never calls the media service or receives a model/provider/service credential. A tablet on another device requires agreed authenticated LAN hosting, exact allowed origins, and trusted HTTPS for browser capture. These local URLs are not remotely deployed services.
 
 ### The robot's face
 
-The showroom kiosk opens with a large smiling robot, rather than the form controls.
-After operator pairing, **Let's begin** offers a short local-voice permission
-prompt, then opens the existing unchecked permission controls. **Continue without
-voice** opens the same controls immediately. Spoken prompts never grant consent,
-capture a photo, start a render, or acknowledge video playback.
+`/kiosk` is the portrait-first, edge-to-edge green robot face, not a dashboard.
+The safe-area-aware shell fills the dynamic viewport in portrait and landscape.
+**Stop robot**, microphone mute, camera status and **End session** stay reachable,
+including during inline film playback. **Pause animation** is a separate operator
+control, never a physical stop. Use **Toggle fullscreen** where supported, or
+Safari's **Add to Home Screen** on iPad. No private session/media service worker
+or browser-persisted capability is installed.
 
-**Hear this message** opts into device-local English speech when the browser
-provides it. The mouth moves on actual speech start/end events; it is a
-speech-state animation, not phoneme-level lip sync. **Stop voice / Mute voice**,
-captions, a face-motion pause control, and the system's reduced-motion preference
-are supported. Speech stops on session changes, hidden/offscreen presentation,
-and when the video player replaces the face. Without a suitable local voice,
-the app shows a clear notice and the text-only path remains available.
+After one-time operator pairing, the customer explicitly enables live microphone
+streaming. The face uses RobotPart's shared OpenAI Live/WebRTC transport,
+preserving its full-duplex voice and barge-in; it never falls back to browser
+speech synthesis. Captions follow real transcript deltas and the mouth follows
+remote audio samples, not a speaking timer. **Continue by touch** exposes one
+question at a time. Typed tool actions and touch share `ShowroomController`;
+approvals bind the exact current readback, revision, fingerprint and expiry.
+Transcript fragments and silence are not approval events.
 
-This is demo narration, not Damian's live robot audio connection. It does not
-activate a microphone or call a paid voice provider. The face guides the existing
-permission, preference, brief, reference-photo and media steps. **Show session
-controls** keeps manual controls available throughout. A loaded authorized MP4
-replaces the face, and only actual video playback sends the reveal event.
+Photography starts only after explicit photography, likeness and provider-transfer
+consent is recorded by FinalProject. Local MediaPipe face and pose models quietly
+collect one to four different views with lighting, blur, stability and duplicate
+gates. There is no countdown or mandatory approval for each shot. **Photos &
+camera** offers pause/resume, normalized JPEG/PNG upload, review and remove/retake.
+Each photo is limited to 5 MiB, the set to 20 MiB; the front face is preferred as
+primary. Multiple people, lost tracking or hidden presentation pause local
+activity. Movie approval freezes the references; later conversation never
+silently rerenders the movie. Run `npm run assets:showroom` once to prepare the
+local face, pose and WASM files before camera use.
 
-The kiosk's photo control uses the tablet/browser's file or camera picker after consent; it does not continuously activate the camera or microphone. This UI sends `media_revealed` only after the video fires actual playback. Damian must not separately acknowledge the same presentation before it plays.
+The iPad never calls Web Bluetooth. The Windows operator bridge must be armed
+with rear clearance, and the customer must approve a bounded reverse framing
+intent. Execution uses a newly measured local tracking sample after approval.
+The bridge owns pulse/cumulative caps and its watchdog. **Stop requested** is
+distinct from a fresh bridge stopped report, which still is not a physical
+hardware acknowledgement.
+
+The fixed same-origin `/api/showroom` gateway uses the canonical
+[showroom-v1 contract](integration/dwight/showroom-v1/README.md). Playback is
+offered explicitly, checks the authorized MP4 length and SHA-256, pauses live
+audio/capture, and sends `playback_started` only from the browser's `playing`
+event. Only `ended` enables post-movie scheduling. Calendar readback includes
+the exact 60-minute time, timezone, location and invitees before confirmation.
+Ending/revoking clears local tracks and blob URLs and requests server cleanup;
+it does not cancel a confirmed appointment.
+
+The old `KioskController`, guide and local-demo narrator remain isolated for
+legacy callers and regression coverage; the active `/kiosk` does not use them.
+Tests use injected transports, media and fixtures, never a real camera, paid
+provider or hardware. Actual iPad/Safari permissions, voice and supervised
+hardware still require operator acceptance on the target devices.
 
 ## The workflow
 
 Worker heartbeat and lost-lease failures are reported as errors and exit nonzero, while intentional `SIGINT`/`SIGTERM` shutdowns are logged separately. A stopped worker never automatically resubmits paid operations; saved plans, approvals and generated assets remain available for explicit recovery.
+
+### Machine-owned studio lifecycle
+
+The full studio API supports private orchestrator sessions without changing the creator UI or the separate dedicated media-service contract. Send `Authorization: Bearer MOVIE_API_TOKEN` and `x-movie-session-id` on **every** upload, job, receipt and asset request. The scope must contain 1-128 ASCII letters, digits, `_` or `-`; it partitions the machine principal. Browser cookies cannot select that scope. Keep the token server-side and use the existing loopback-only API.
+
+| Operation | Route | Result |
+|---|---|---|
+| Upload 1-4 originals | `POST /api/movie-assets`, multipart `photos` and JSON `consent`, plus `Idempotency-Key` | Existing `assets` plus durable `receipt` |
+| Reconcile upload | `GET /api/movie-upload-batches/{key}` | `{receipt, assets}`; assets are populated only for a completed upload |
+| Reclaim upload | `DELETE /api/movie-upload-batches/{key}` | Cancelled batch receipt; 202 while references are still in use, 200 after deletion |
+| Submit full studio request | `POST /api/movie-jobs` | Unchanged canonical `JobRequest` and acceptance |
+| Reconcile submission | `GET /api/movie-job-requests/{idempotency_key}` | `{receipt: {jobId, fingerprint, cancelledAt?, assetsDeleted?}}` |
+| Cancel before or after submission | `DELETE /api/movie-job-requests/{idempotency_key}` | Durable tombstone even when no job exists yet; 202 pending, 200 settled |
+| Cancel known job | `POST /api/movie-jobs/{jobId}/cancel` | Same cancellation receipt |
+
+Receipt keys use the same bounded identifier alphabet as session scopes. Upload fingerprints bind normalized ordered photo bytes and consent; job fingerprints bind the complete canonical request. Reuse the original key and exact input to reconcile a lost response; never invent a replacement key after an uncertain paid submission. Cancelled keys cannot be reused, including after restart or an explicit retry/designer decision.
+
+Upload receipts allocate IDs before any photo is saved, allowing partial/orphaned batch cleanup. Delete the job by key first, then its upload batch. Retry a pending or failed cleanup with the same keys. Cancellation is observed by the separate worker process and reaches existing provider calls and the owned encoder through its abort signal. `assetsDeleted: true` is not published until local worker execution and artifact writes have settled and all owned job copies are removed. It does not assert deletion from a model provider's retention systems or cancellation of an already accepted remote billing operation. Other jobs' references and shared catalog assets are never deleted. Ordinary terminal-job deletion retains its existing creator workflow.
 
 The studio defaults to **reviewed storyboards with required Google Veo animation**. Astra handles vision/direction, Flare creates the reference stills, and Veo creates one to three eight-second moving clips after approval. Pan/zoom animation of a photograph does not satisfy the animation requirement.
 
@@ -307,7 +353,7 @@ The complete portable contract is [integration/contracts.ts](integration/contrac
 
 The browser uses an HTTP-only same-origin session. Machine clients use a privately configured `MOVIE_API_TOKEN`; upload and retrieve using the same principal. The development server is loopback-only. Deploying it for a robot on another device requires an explicit authenticated hosting and trusted-origin design, not simply exposing the local server.
 
-Studio polling is implemented. The separate kiosk delegates session state, consent, customer selection, briefing and media commands to Dwight rather than bypassing his orchestrator. Outbound webhooks, robot movement, social discovery, sales dialogue, calendar booking, Trigger.dev, CopilotKit UI integration, and cloud deployment are not implemented by this module.
+Studio polling is implemented. The showroom delegates session state, consent, approved studio inputs, bridge intents and calendar actions to FinalProject rather than bypassing its authority. Provider and hardware readiness are separate from the face UI; outbound webhooks, social discovery, Trigger.dev, CopilotKit UI integration and cloud deployment are not supplied by this module.
 
 ## Dwight integration
 
@@ -328,7 +374,7 @@ flowchart LR
 
 The arrows describe distinct application paths, not interchangeable endpoints. The kiosk never receives a service token or calls the creator-studio job API to bypass Dwight's session authority. The studio communicates with its worker through its private API and disk-backed queue.
 
-The kiosk pairs with a device token or joins an existing session from Damian's trusted bridge. It displays explicit consent, confirmed customer/preferences, a reviewable brief, real job state and authorized Blob playback. Result provenance distinguishes generated media, synthetic fixtures, and prerecorded fallback. `media_revealed` belongs to the actual playback event, not to the job becoming ready.
+The active kiosk exchanges an expiring operator code for the one authoritative session and follows the showroom-v1 studio workflow. The legacy controller still supports device-token/session-capability callers and dedicated briefs; its `media_revealed` acknowledgement also belongs to actual playback, not job readiness. Explicit fixture mode stays labeled as a synthetic sample, never a generated likeness.
 
 The media service accepts authenticated, globally idempotent `POST /jobs`, returns acceptance before generation, exposes `GET /jobs/{providerJobId}`, and serves only same-base relative MP4 paths. `DELETE /jobs/by-key/{jobId}` must tombstone the key, stop renderer-held work and delete local participant assets before acknowledging cleanup. Dwight calls it after downloading the result as well as on cancellation/failure. This brief-based media service is separate from the creator studio's Veo/Sora bookend workflow; selecting a studio video provider does not upgrade this service.
 
