@@ -1,6 +1,6 @@
 # PadBot JavaScript library
 
-Dependency-free browser ES module for connecting to and driving PadBot-compatible BLE robots. Import `PadBot` from `./RobotLibrary/padbot.js` in a browser module. There is no build step, API key, camera, microphone, Gemini dependency, or automatic wandering. The existing PWA is unchanged; this is a separate reusable controller.
+Dependency-free browser ES module for connecting to and driving PadBot-compatible BLE robots. The implementation now lives in `packages/showroom-runtime/browser/padbot.js`; this folder retains a thin relative re-export so native browser modules do not require a bundler or an import map. Serve the repository root so both `RobotPart/RobotLibrary` and `packages/showroom-runtime` are available, then import `PadBot` from `./RobotPart/RobotLibrary/padbot.js`. If distributing only the driver, copy the shared implementation rather than the re-export alone. There is no API key, camera, microphone, or automatic wandering. Bundled consumers may instead import `PadBot` from `@magicpitch/showroom-runtime/browser`.
 
 ## Requirements and first use
 
@@ -110,4 +110,4 @@ Direct API failures reject promises. Superseded queued/in-flight managed command
 
 ## Tests
 
-Use Node.js 22 or newer. From the repository root run `node --test RobotLibrary/padbot.test.js`, or run `npm test` inside `RobotLibrary`. Tests use Node's built-in runner, mocked Bluetooth devices, and fake timers; no installation, browser, or real robot is needed. Hardware behavior must still be checked on your specific robot.
+Use Node.js 22 or newer. From the repository root run `node --test RobotPart/RobotLibrary/padbot.test.js`, or run `npm test` inside `RobotPart/RobotLibrary`. Tests use Node's built-in runner, mocked Bluetooth devices, and fake timers; no installation, browser, or real robot is needed. Keep the repository-relative shared runtime when using the re-export. Hardware behavior must still be checked on your specific robot.
