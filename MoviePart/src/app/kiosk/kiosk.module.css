@@ -35,6 +35,12 @@
 .setupContent { max-width: 1040px; padding: 12px 0 26px; }
 .setupContent > p { max-width: 75ch; }
 .setupContent form { margin-top: 20px; }
+.sessionControls { border-block: 1px solid var(--kiosk-line); margin-block: 24px; padding-bottom: 8px; }
+.sessionControls > summary { cursor: pointer; font-weight: 600; padding: 16px 0; }
+.sessionControls[open] { padding-bottom: 26px; }
+.sessionControls > .help { margin-bottom: 24px; }
+.sessionControls [tabindex="-1"] { scroll-margin-top: 24px; }
+.sessionControls [tabindex="-1"]:focus-visible { outline: 3px solid #354d27; outline-offset: 4px; }
 .pairModes { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; border-block: 1px solid var(--kiosk-line); padding-block: 14px; margin: 16px 0; }
 .bridgeFields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .field { display: block; margin: 16px 0 8px; }
