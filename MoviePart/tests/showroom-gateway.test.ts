@@ -49,6 +49,33 @@ test("voice uses the real SDP exchange unchanged and supports explicit teardown"
   assert.equal(closed.status, 204);
 });
 
+test("voice permits canonical SDP above the ordinary JSON cap but bounds its encoded envelope", async () => {
+  const sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n" +
+    "a=candidate:1 1 UDP 2122260223 192.0.2.1 10000 typ host\r\n".repeat(1200);
+  assert.ok(Buffer.byteLength(sdp) > 16_384 && Buffer.byteLength(sdp) <= 131_072);
+  const payload = JSON.stringify({ sdp, generation: 1 });
+  const response = await showroomGateway(request(`${snapshot}/voice`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: payload,
+  }), {
+    ...options, fetch: async (_url, init) => {
+      assert.equal(Buffer.from(init.body as Uint8Array).toString(), payload);
+      return Response.json({ session: { id: "live-1" }, transport: { type: "webrtc", sdp } });
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).transport.sdp, sdp);
+  const oversized = await showroomGateway(request(`${snapshot}/voice`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: "x".repeat(1_048_576) }),
+  }), { ...options, fetch: async () => assert.fail("oversize voice envelope forwarded") });
+  assert.equal(oversized.status, 413);
+  const escaped = JSON.stringify({ transport: { type: "webrtc", sdp: "\u0001".repeat(131_072) } });
+  assert.ok(Buffer.byteLength(escaped) > 524_288 && Buffer.byteLength(escaped) < 1_048_576);
+  const largeAnswer = await showroomGateway(request(`${snapshot}/voice`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: payload,
+  }), { ...options, fetch: async () => new Response(escaped, { headers: { "Content-Type": "application/json" } }) });
+  assert.equal(await largeAnswer.text(), escaped);
+});
+
 test("gateway forwards canonical JSON and only necessary headers to its fixed upstream", async () => {
   const bytes = '{ "eventId": "event-1", "expectedRevision": 0, "action": {"type":"begin"} }';
   const response = await showroomGateway(request(actions, {

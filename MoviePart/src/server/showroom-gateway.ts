@@ -9,7 +9,7 @@ export interface ShowroomGatewayOptions {
   maxResponseBytes?: number;
 }
 
-type Route = { methods: string[]; body?: "json" | "image"; asset?: boolean; revision?: boolean; pairing?: boolean };
+type Route = { methods: string[]; body?: "json" | "image"; asset?: boolean; revision?: boolean; pairing?: boolean; voice?: boolean };
 const prefix = "/api/showroom";
 const identifier = "[A-Za-z0-9_-]{1,128}";
 const session = `/v1/sessions/${identifier}`;
@@ -18,7 +18,7 @@ const routes: [RegExp, Route][] = [
   [new RegExp(`^${session}/showroom$`), { methods: ["GET"] }],
   [new RegExp(`^${session}/showroom/actions$`), { methods: ["POST"], body: "json" }],
   [new RegExp(`^${session}/showroom/catalog$`), { methods: ["GET"] }],
-  [new RegExp(`^${session}/showroom/voice$`), { methods: ["POST", "DELETE"], body: "json" }],
+  [new RegExp(`^${session}/showroom/voice$`), { methods: ["POST", "DELETE"], body: "json", voice: true }],
   [new RegExp(`^${session}/showroom/references$`), { methods: ["POST"], body: "image", revision: true }],
   [new RegExp(`^${session}/showroom/references/${identifier}$`), { methods: ["DELETE"], revision: true }],
   [new RegExp(`^${session}$`), { methods: ["DELETE"] }],
@@ -184,7 +184,7 @@ export async function showroomGateway(request: Request, options: ShowroomGateway
     }
     const timeoutMs = positiveLimit(options.timeoutMs ?? 30_000, 120_000);
     const uploadLimit = positiveLimit(options.maxUploadBytes ?? 5_242_880, 33_554_432);
-    const responseLimit = positiveLimit(options.maxResponseBytes ?? (route.asset ? 134_217_728 : 524_288), 268_435_456);
+    const responseLimit = positiveLimit(options.maxResponseBytes ?? (route.asset ? 134_217_728 : route.voice ? 1_048_576 : 524_288), 268_435_456);
     const controller = new AbortController();
     const abort = () => controller.abort();
     request.signal.addEventListener("abort", abort, { once: true });
@@ -199,7 +199,7 @@ export async function showroomGateway(request: Request, options: ShowroomGateway
         throw new GatewayError(415, "CONTENT_TYPE", "Use the content type required by this showroom route.");
       }
       headers.set("Content-Type", contentType);
-      body = await boundedBody(request, route.pairing ? 256 : route.body === "json" ? 16_384 : uploadLimit, controller.signal);
+      body = await boundedBody(request, route.pairing ? 256 : route.voice ? 1_048_576 : route.body === "json" ? 16_384 : uploadLimit, controller.signal);
     }
     controller.signal.throwIfAborted();
     const response = await (options.fetch ?? fetch)(`${upstream}${path}${url.search}`, {

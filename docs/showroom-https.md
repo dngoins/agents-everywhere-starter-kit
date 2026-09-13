@@ -195,8 +195,10 @@ requests are denied. Only Authorization, required Content-Type, exact Origin
 and an allowed Range are forwarded; cookies, Host and untrusted forwarded
 headers are not.
 
-The gateway bounds pairing JSON to 256 bytes, other JSON to 16 KiB, images to
-5 MiB, JSON responses to 512 KiB, media responses to 128 MiB, and request/response
+The gateway bounds pairing JSON to 256 bytes, ordinary request JSON to 16 KiB,
+and voice request/response JSON to 1 MiB to accommodate the canonical 128 KiB
+UTF-8 SDP plus JSON escaping/envelope. Images are limited to 5 MiB, ordinary
+JSON responses to 512 KiB, media responses to 128 MiB, and request/response
 duration to 30 seconds. It limits actual streamed bytes, not just declared
 Content-Length. Images and MP4 are not parsed/re-encoded. Ranges, content type
 and status are retained. Redirects are never followed; network errors and
