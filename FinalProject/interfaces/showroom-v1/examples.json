@@ -1,0 +1,487 @@
+{
+  "KioskPairingSchema": {
+    "pairingCode": "ABCD1234",
+    "expiresAt": 1800000060000
+  },
+  "ShowroomSnapshotSchema": {
+    "schemaVersion": 1,
+    "mode": "studio",
+    "sessionId": "11111111-1111-4111-8111-111111111111",
+    "serverInstanceId": "11111111-1111-4111-8111-111111111111",
+    "revision": 3,
+    "inputRevision": 2,
+    "expiresAt": 1800000300000,
+    "state": "review",
+    "visitor": {
+      "visitorId": "11111111-1111-4111-8111-111111111111",
+      "sessionId": "11111111-1111-4111-8111-111111111111",
+      "source": "self_reported",
+      "displayName": "Alex"
+    },
+    "consent": {
+      "policyVersion": "showroom-1",
+      "personalization": true,
+      "capture": true,
+      "likeness": true,
+      "providerTransfer": true,
+      "calendar": false,
+      "motion": false,
+      "consentId": "11111111-1111-4111-8111-111111111111",
+      "inputRevision": 2,
+      "recordedAt": 1800000000000
+    },
+    "context": {
+      "signals": [
+        {
+          "value": "Coastal drives",
+          "source": "manual",
+          "visualUseAllowed": true,
+          "confidence": null
+        }
+      ]
+    },
+    "selection": {
+      "productId": "model-y",
+      "templateId": "DREAM_ROUTE",
+      "heroMode": "LIKENESS",
+      "productionMode": "reviewed-storyboard",
+      "videoProvider": "google-veo",
+      "enableHeroVideo": true,
+      "storyFormat": "four-shot",
+      "renderLayout": "storyboard",
+      "movieDurationSeconds": null
+    },
+    "captureSet": {
+      "captureSetId": "11111111-1111-4111-8111-111111111111",
+      "sessionId": "11111111-1111-4111-8111-111111111111",
+      "consentId": "11111111-1111-4111-8111-111111111111",
+      "inputRevision": 2,
+      "references": [
+        {
+          "assetId": "22222222-2222-4222-8222-222222222222",
+          "view": "front_face"
+        }
+      ],
+      "primaryAssetId": "22222222-2222-4222-8222-222222222222"
+    },
+    "pendingAction": {
+      "pendingActionId": "11111111-1111-4111-8111-111111111111",
+      "expectedRevision": 3,
+      "inputRevision": 2,
+      "confirmationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "readback": "Use the approved photo and coastal-drive interest to make the selected Model Y studio movie?",
+      "expiresAt": 1800000060000,
+      "kind": "studio",
+      "payload": {
+        "mode": "studio",
+        "sessionId": "11111111-1111-4111-8111-111111111111",
+        "inputRevision": 2,
+        "visitor": {
+          "visitorId": "11111111-1111-4111-8111-111111111111",
+          "sessionId": "11111111-1111-4111-8111-111111111111",
+          "source": "self_reported",
+          "displayName": "Alex"
+        },
+        "selection": {
+          "productId": "model-y",
+          "templateId": "DREAM_ROUTE",
+          "heroMode": "LIKENESS",
+          "productionMode": "reviewed-storyboard",
+          "videoProvider": "google-veo",
+          "enableHeroVideo": true,
+          "storyFormat": "four-shot",
+          "renderLayout": "storyboard",
+          "movieDurationSeconds": null
+        },
+        "context": {
+          "signals": [
+            {
+              "value": "Coastal drives",
+              "source": "manual",
+              "visualUseAllowed": true,
+              "confidence": null
+            }
+          ]
+        },
+        "consent": {
+          "policyVersion": "showroom-1",
+          "personalization": true,
+          "capture": true,
+          "likeness": true,
+          "providerTransfer": true,
+          "calendar": false,
+          "motion": false,
+          "consentId": "11111111-1111-4111-8111-111111111111",
+          "inputRevision": 2,
+          "recordedAt": 1800000000000
+        },
+        "captureSet": {
+          "captureSetId": "11111111-1111-4111-8111-111111111111",
+          "sessionId": "11111111-1111-4111-8111-111111111111",
+          "consentId": "11111111-1111-4111-8111-111111111111",
+          "inputRevision": 2,
+          "references": [
+            {
+              "assetId": "22222222-2222-4222-8222-222222222222",
+              "view": "front_face"
+            }
+          ],
+          "primaryAssetId": "22222222-2222-4222-8222-222222222222"
+        }
+      }
+    },
+    "acceptedStudio": null,
+    "studio": {
+      "status": "idle"
+    },
+    "playback": {
+      "status": "idle"
+    },
+    "calendar": {
+      "status": "idle"
+    },
+    "bridge": null,
+    "motionGrant": null
+  },
+  "ShowroomActionSchema": {
+    "schemaVersion": 1,
+    "eventId": "11111111-1111-4111-8111-111111111111",
+    "expectedRevision": 3,
+    "type": "action_confirmed",
+    "payload": {
+      "pendingActionId": "11111111-1111-4111-8111-111111111111",
+      "confirmationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "decision": "approve",
+      "channel": "touch"
+    }
+  },
+  "AcceptedStudioSnapshotSchema": {
+    "schemaVersion": 1,
+    "snapshotId": "11111111-1111-4111-8111-111111111111",
+    "acceptedAt": 1800000000000,
+    "acceptedRevision": 4,
+    "pendingActionId": "11111111-1111-4111-8111-111111111111",
+    "confirmationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "input": {
+      "mode": "studio",
+      "sessionId": "11111111-1111-4111-8111-111111111111",
+      "inputRevision": 2,
+      "visitor": {
+        "visitorId": "11111111-1111-4111-8111-111111111111",
+        "sessionId": "11111111-1111-4111-8111-111111111111",
+        "source": "self_reported",
+        "displayName": "Alex"
+      },
+      "selection": {
+        "productId": "model-y",
+        "templateId": "DREAM_ROUTE",
+        "heroMode": "LIKENESS",
+        "productionMode": "reviewed-storyboard",
+        "videoProvider": "google-veo",
+        "enableHeroVideo": true,
+        "storyFormat": "four-shot",
+        "renderLayout": "storyboard",
+        "movieDurationSeconds": null
+      },
+      "context": {
+        "signals": [
+          {
+            "value": "Coastal drives",
+            "source": "manual",
+            "visualUseAllowed": true,
+            "confidence": null
+          }
+        ]
+      },
+      "consent": {
+        "policyVersion": "showroom-1",
+        "personalization": true,
+        "capture": true,
+        "likeness": true,
+        "providerTransfer": true,
+        "calendar": false,
+        "motion": false,
+        "consentId": "11111111-1111-4111-8111-111111111111",
+        "inputRevision": 2,
+        "recordedAt": 1800000000000
+      },
+      "captureSet": {
+        "captureSetId": "11111111-1111-4111-8111-111111111111",
+        "sessionId": "11111111-1111-4111-8111-111111111111",
+        "consentId": "11111111-1111-4111-8111-111111111111",
+        "inputRevision": 2,
+        "references": [
+          {
+            "assetId": "22222222-2222-4222-8222-222222222222",
+            "view": "front_face"
+          }
+        ],
+        "primaryAssetId": "22222222-2222-4222-8222-222222222222"
+      }
+    }
+  },
+  "CalendarDraftSchema": {
+    "draftId": "11111111-1111-4111-8111-111111111111",
+    "inputRevision": 2,
+    "appointment": {
+      "startTime": "2027-01-15T15:00:00Z",
+      "endTime": "2027-01-15T16:00:00Z",
+      "timeZone": "America/New_York",
+      "attendees": [
+        "visitor@example.com",
+        "staff@example.com"
+      ],
+      "subject": "Model Y test drive",
+      "location": "Showroom",
+      "productId": "model-y",
+      "productName": "Model Y"
+    }
+  },
+  "ShowroomReferenceUploadedSchema": {
+    "assetId": "22222222-2222-4222-8222-222222222222",
+    "snapshot": {
+      "schemaVersion": 1,
+      "mode": "studio",
+      "sessionId": "11111111-1111-4111-8111-111111111111",
+      "serverInstanceId": "11111111-1111-4111-8111-111111111111",
+      "revision": 3,
+      "inputRevision": 2,
+      "expiresAt": 1800000300000,
+      "state": "review",
+      "visitor": {
+        "visitorId": "11111111-1111-4111-8111-111111111111",
+        "sessionId": "11111111-1111-4111-8111-111111111111",
+        "source": "self_reported",
+        "displayName": "Alex"
+      },
+      "consent": {
+        "policyVersion": "showroom-1",
+        "personalization": true,
+        "capture": true,
+        "likeness": true,
+        "providerTransfer": true,
+        "calendar": false,
+        "motion": false,
+        "consentId": "11111111-1111-4111-8111-111111111111",
+        "inputRevision": 2,
+        "recordedAt": 1800000000000
+      },
+      "context": {
+        "signals": [
+          {
+            "value": "Coastal drives",
+            "source": "manual",
+            "visualUseAllowed": true,
+            "confidence": null
+          }
+        ]
+      },
+      "selection": {
+        "productId": "model-y",
+        "templateId": "DREAM_ROUTE",
+        "heroMode": "LIKENESS",
+        "productionMode": "reviewed-storyboard",
+        "videoProvider": "google-veo",
+        "enableHeroVideo": true,
+        "storyFormat": "four-shot",
+        "renderLayout": "storyboard",
+        "movieDurationSeconds": null
+      },
+      "captureSet": {
+        "captureSetId": "11111111-1111-4111-8111-111111111111",
+        "sessionId": "11111111-1111-4111-8111-111111111111",
+        "consentId": "11111111-1111-4111-8111-111111111111",
+        "inputRevision": 2,
+        "references": [
+          {
+            "assetId": "22222222-2222-4222-8222-222222222222",
+            "view": "front_face"
+          }
+        ],
+        "primaryAssetId": "22222222-2222-4222-8222-222222222222"
+      },
+      "pendingAction": {
+        "pendingActionId": "11111111-1111-4111-8111-111111111111",
+        "expectedRevision": 3,
+        "inputRevision": 2,
+        "confirmationFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "readback": "Use the approved photo and coastal-drive interest to make the selected Model Y studio movie?",
+        "expiresAt": 1800000060000,
+        "kind": "studio",
+        "payload": {
+          "mode": "studio",
+          "sessionId": "11111111-1111-4111-8111-111111111111",
+          "inputRevision": 2,
+          "visitor": {
+            "visitorId": "11111111-1111-4111-8111-111111111111",
+            "sessionId": "11111111-1111-4111-8111-111111111111",
+            "source": "self_reported",
+            "displayName": "Alex"
+          },
+          "selection": {
+            "productId": "model-y",
+            "templateId": "DREAM_ROUTE",
+            "heroMode": "LIKENESS",
+            "productionMode": "reviewed-storyboard",
+            "videoProvider": "google-veo",
+            "enableHeroVideo": true,
+            "storyFormat": "four-shot",
+            "renderLayout": "storyboard",
+            "movieDurationSeconds": null
+          },
+          "context": {
+            "signals": [
+              {
+                "value": "Coastal drives",
+                "source": "manual",
+                "visualUseAllowed": true,
+                "confidence": null
+              }
+            ]
+          },
+          "consent": {
+            "policyVersion": "showroom-1",
+            "personalization": true,
+            "capture": true,
+            "likeness": true,
+            "providerTransfer": true,
+            "calendar": false,
+            "motion": false,
+            "consentId": "11111111-1111-4111-8111-111111111111",
+            "inputRevision": 2,
+            "recordedAt": 1800000000000
+          },
+          "captureSet": {
+            "captureSetId": "11111111-1111-4111-8111-111111111111",
+            "sessionId": "11111111-1111-4111-8111-111111111111",
+            "consentId": "11111111-1111-4111-8111-111111111111",
+            "inputRevision": 2,
+            "references": [
+              {
+                "assetId": "22222222-2222-4222-8222-222222222222",
+                "view": "front_face"
+              }
+            ],
+            "primaryAssetId": "22222222-2222-4222-8222-222222222222"
+          }
+        }
+      },
+      "acceptedStudio": null,
+      "studio": {
+        "status": "idle"
+      },
+      "playback": {
+        "status": "idle"
+      },
+      "calendar": {
+        "status": "idle"
+      },
+      "bridge": null,
+      "motionGrant": null
+    }
+  },
+  "ShowroomCatalogSchema": {
+    "mode": "studio",
+    "products": [
+      {
+        "id": "model-y",
+        "name": "Model Y",
+        "ready": false
+      }
+    ],
+    "templates": [
+      {
+        "id": "DREAM_ROUTE",
+        "name": "Dream Route"
+      }
+    ],
+    "videoProviders": [
+      {
+        "id": "google-veo",
+        "available": false
+      }
+    ],
+    "workerAvailable": false,
+    "rendererAvailable": false
+  },
+  "StudioStatusSchema": {
+    "status": "ready",
+    "snapshotId": "11111111-1111-4111-8111-111111111111",
+    "jobId": "11111111-1111-4111-8111-111111111111",
+    "assetId": "22222222-2222-4222-8222-222222222222",
+    "mimeType": "video/mp4",
+    "durationSeconds": 15,
+    "byteLength": 1024,
+    "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "provenance": "mock_fixture"
+  },
+  "ShowroomVoiceSetupSchema": {
+    "sessionId": "11111111-1111-4111-8111-111111111111",
+    "generation": 1,
+    "session": {
+      "id": "live_example"
+    },
+    "transport": {
+      "type": "webrtc",
+      "sdp": "v=0\r\ns=showroom\r\n"
+    }
+  },
+  "BridgeLeaseSchema": {
+    "bridgeId": "11111111-1111-4111-8111-111111111111",
+    "sessionId": "11111111-1111-4111-8111-111111111111",
+    "leaseId": "11111111-1111-4111-8111-111111111111",
+    "generation": 1,
+    "issuedAt": 1800000000000,
+    "expiresAt": 1800000030000,
+    "operatorArmed": true,
+    "rearClearanceConfirmed": true
+  },
+  "BridgeCommandSchema": {
+    "commandId": "11111111-1111-4111-8111-111111111111",
+    "bridgeId": "11111111-1111-4111-8111-111111111111",
+    "sessionId": "11111111-1111-4111-8111-111111111111",
+    "leaseId": "11111111-1111-4111-8111-111111111111",
+    "leaseGeneration": 1,
+    "sequence": 1,
+    "issuedAt": 1800000000000,
+    "expiresAt": 1800000002000,
+    "type": "motion",
+    "intent": "reverse_for_half_body",
+    "speed": "low",
+    "pulseMs": 500,
+    "tracking": {
+      "capturedAt": "2027-01-15T08:00:00.000Z",
+      "confidence": 0.9,
+      "personCount": 1,
+      "goal": "half_body",
+      "centerX": 0.5,
+      "centerY": 0.5,
+      "bodyOccupancy": 0.7
+    }
+  },
+  "BridgeAcknowledgementSchema": {
+    "commandId": "11111111-1111-4111-8111-111111111111",
+    "leaseId": "11111111-1111-4111-8111-111111111111",
+    "leaseGeneration": 1,
+    "sequence": 1,
+    "status": "write_completed",
+    "physicalExecution": "unverified",
+    "reason": "completed",
+    "at": 1800000000000
+  },
+  "BridgeServerMessageSchema": {
+    "type": "state",
+    "bridgeId": "11111111-1111-4111-8111-111111111111",
+    "generation": 1,
+    "lastSequence": 0,
+    "lease": null,
+    "serverTime": 1800000000000
+  },
+  "OperatorCredentialSchema": {
+    "bridgeId": "11111111-1111-4111-8111-111111111111",
+    "operatorToken": "example-only-not-a-real-capability",
+    "role": "operator",
+    "purpose": "bridge:lease",
+    "expiresAt": 1800000060000
+  }
+}
