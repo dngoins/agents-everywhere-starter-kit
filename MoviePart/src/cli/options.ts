@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { MovieError } from "../domain";
+import { MovieError, movieDurationSchema, videoProviderSchema } from "../domain";
 
 const optionsSchema = z.object({
   template: z.enum(["VELOCITY", "TOMORROW_DRIVE", "DREAM_ROUTE", "HERO_OF_THE_DAY"]),
@@ -16,6 +16,8 @@ const optionsSchema = z.object({
   check: z.boolean(),
   help: z.boolean(),
   output: z.string().optional(),
+  duration: movieDurationSchema.optional(),
+  videoProvider: videoProviderSchema.optional(),
 });
 
 export function parseCliOptions(args: string[]) {
@@ -35,10 +37,16 @@ export function parseCliOptions(args: string[]) {
       check: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
       output: { type: "string" },
+      duration: { type: "string" },
+      "video-provider": { type: "string" },
     },
   });
-  const { photo, ...rest } = values;
-  const options = optionsSchema.parse({ ...rest, photos: photo });
+  const { photo, duration, "video-provider": videoProvider, ...rest } = values;
+  if (videoProvider && duration === undefined) throw new MovieError("DURATION_REQUIRED", "--video-provider requires --duration (13, 15, 18, 23 or 28 seconds).", 400);
+  const options = optionsSchema.parse({
+    ...rest, photos: photo,
+    ...(duration !== undefined ? { duration: Number(duration), videoProvider: videoProvider ?? "google-veo" } : {}),
+  });
   const interests = [...new Set(options.interests.split(",").map(value => value.trim()).filter(Boolean))];
   if (interests.length > 3 || interests.some(value => value.length > 100)) {
     throw new MovieError("INVALID_INTERESTS", "Supply at most three interests, each at most 100 characters.", 400);

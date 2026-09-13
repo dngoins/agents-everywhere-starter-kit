@@ -282,6 +282,29 @@ test("invalid hero timing or a missing approved still prevents submissions", asy
   assert.equal(f.sequence.length, 0);
 });
 
+test("Veo continues from an owned video-derived frame without generating another end image", async () => {
+  const f = await fixture();
+  f.input.plan.videoProvider = "google-veo";
+  const seed = await f.context.media.saveAsset({
+    ownerId: f.context.ownerId, jobId: f.context.jobId, kind: "storyboard", mime: "image/png",
+    bytes: f.entries.get(f.first.id)!,
+  });
+  f.dependencies.endFrame = async () => assert.fail("Continuation must not regenerate endpoint images");
+  const generate = f.transport.generate;
+  f.transport.generate = async input => {
+    assert.equal(input.config?.lastFrame, undefined);
+    assert.equal(input.image?.imageBytes, Buffer.from(f.entries.get(seed.id)!).toString("base64"));
+    assert.match(input.prompt!, /Continuation 2 of 3/);
+    return generate(input);
+  };
+  assert.ok(await createVeoService(config, f.dependencies).generate({ ...f.input, continuation: { assetId: seed.id, index: 1, count: 3 } }, f.context));
+  const asset = f.records.find(item => item.id === seed.id)!;
+  asset.jobId = randomUUID();
+  await assert.rejects(createVeoService(config, f.dependencies).generate({ ...f.input, continuation: { assetId: seed.id, index: 1, count: 3 } }, f.context),
+    (error: unknown) => error instanceof MovieError && error.code === "INVALID_REFERENCE");
+  assert.equal(f.sequence.filter(value => value === "generate").length, 1);
+});
+
 test("internal Veo timeout falls back, but explicit cancellation propagates", async () => {
   const f = await fixture();
   f.transport.generate = async request => {

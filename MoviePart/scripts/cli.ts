@@ -18,6 +18,8 @@ async function main() {
   --product <catalog-id>                Defaults to the configured ready product
   --consent                            Required explicit permission
   --hero                               Optional paid Veo enhancement
+  --duration 13|15|18|23|28              Required video with two bookends; longer cuts create 2-3 clips
+  --video-provider google-veo|openai-sora  Used with --duration; defaults to google-veo
   --output <new-file.mp4>               Download completed movie; never overwrite
 
 Start npm run dev and npm run worker first.
@@ -58,7 +60,10 @@ This is the creator-studio client, NOT Dwight's orchestrator or media-service AP
     customer_reference_asset_ids: assets.map(asset => asset.id),
     primary_reference_asset_id: assets[0]?.id ?? null, consent, product_id: product.id,
     preferred_template: options.template, story_format: options.format, hero_mode: options.mode,
-    enable_hero_video: options.hero,
+    enable_hero_video: options.hero || options.duration !== undefined,
+    ...(options.duration !== undefined ? {
+      video_provider: options.videoProvider, render_layout: "video-bookends" as const, movie_duration_seconds: options.duration,
+    } : {}),
     personalization_profile: {
       signals: options.interests.map(value => ({ value, source: "manual" as const, visualUseAllowed: true as const, confidence: null })),
       ...(options.name ? { customerFirstName: options.name } : {}),

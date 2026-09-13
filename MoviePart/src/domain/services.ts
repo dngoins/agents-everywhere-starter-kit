@@ -1,6 +1,6 @@
 import type {
   AssetRecord, CharacterReference, Consent, JobStatus, MoviePlan, PersonalizationProfile,
-  ProductReference, RenderResult, SceneTemplate, StoryboardFrame, VideoArtifact, StoryFormat, HeroMode, ProductionMode, VideoProviderId, RenderLayout,
+  ProductReference, RenderResult, SceneTemplate, StoryboardFrame, VideoArtifact, StoryFormat, HeroMode, ProductionMode, VideoProviderId, RenderLayout, MovieDuration, MovieJob,
 } from "./index";
 
 export interface MovieConfig {
@@ -47,6 +47,8 @@ export interface GenerationContext {
   finalizeStoryboard?(): Promise<StoryboardFrame[]>;
 }
 
+export type MovieCheckpoint = (patch: Partial<Pick<MovieJob, "character" | "plan" | "hero" | "heroAttempted" | "result" | "videoSegments">>) => Promise<void>;
+
 export interface ReferenceService {
   extract(input: { assetIds: string[]; primaryAssetId: string; consent: Consent }, context: GenerationContext): Promise<CharacterReference>;
 }
@@ -62,9 +64,10 @@ export interface StoryboardService {
 export interface VideoService {
   generate(input: {
     plan: MoviePlan; character: CharacterReference; product: ProductReference; frames: StoryboardFrame[]; operationId?: string;
+    continuation?: { assetId: string; index: number; count: number };
   }, context: GenerationContext): Promise<VideoArtifact | null>;
 }
 export interface RendererService {
   ready(): Promise<{ available: boolean; message: string }>;
-  render(input: { plan: MoviePlan; frames: StoryboardFrame[]; hero: VideoArtifact | null; productionMode?: ProductionMode; renderLayout?: RenderLayout }, context: GenerationContext): Promise<RenderResult>;
+  render(input: { plan: MoviePlan; frames: StoryboardFrame[]; hero: VideoArtifact | null; videoClips?: VideoArtifact[]; productionMode?: ProductionMode; renderLayout?: RenderLayout; movieDurationSeconds?: MovieDuration }, context: GenerationContext): Promise<RenderResult>;
 }

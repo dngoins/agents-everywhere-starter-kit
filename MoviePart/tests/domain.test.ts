@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { getRenderTimeline, getTimeline, jobRequestSchema, renderResultSchema, validatePlan, type MoviePlan } from "../src/domain";
+import { getMovieFormat, getRenderTimeline, getTimeline, MOVIE_DURATIONS, jobRequestSchema, renderResultSchema, validatePlan, type MoviePlan } from "../src/domain";
 import { getTemplate, templates } from "../src/templates";
 
 const profile = { signals: [{ value: "Egypt", source: "manual" as const, visualUseAllowed: true as const, confidence: null }] };
@@ -84,4 +84,17 @@ test("video-bookend requests require actual generated video and cannot select im
   assert.equal(jobRequestSchema.safeParse({ ...input, video_provider: undefined }).success, false);
   assert.equal(jobRequestSchema.safeParse({ ...input, production_mode: "movie-first" }).success, false);
   assert.equal(jobRequestSchema.safeParse({ ...input, render_layout: "unknown" }).success, false);
+  for (const duration of MOVIE_DURATIONS) {
+    assert.equal(jobRequestSchema.parse({ ...input, movie_duration_seconds: duration }).movie_duration_seconds, duration);
+    const selected = getMovieFormat(duration);
+    const timeline = getRenderTimeline("six-shot", "DREAM_ROUTE", "video-bookends", duration);
+    assert.equal(timeline.durationSeconds, duration);
+    assert.equal(timeline.durations.reduce((sum, seconds) => sum + seconds, 0), duration);
+    assert.equal(timeline.durations.length, selected.clipCount + 2);
+    assert.ok(timeline.durations.slice(1, -1).every(seconds => seconds === 8));
+  }
+  for (const duration of [0, 14, 16, 24, 30, 15.5, "15"]) {
+    assert.equal(jobRequestSchema.safeParse({ ...input, movie_duration_seconds: duration }).success, false);
+  }
+  assert.equal(jobRequestSchema.safeParse({ ...input, render_layout: undefined, movie_duration_seconds: 23 }).success, false);
 });

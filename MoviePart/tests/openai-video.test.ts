@@ -167,6 +167,22 @@ test("Sora defaults to sora-2-pro when no video model is configured", async () =
   assert.equal(result?.model, "sora-2-pro");
 });
 
+test("Sora continuation keeps reference safety checks and checkpoints before a new paid clip", async () => {
+  const f = await fixture();
+  const seed = await f.context.media.saveAsset({
+    ownerId: f.context.ownerId, jobId: f.context.jobId, kind: "storyboard", mime: "image/png",
+    bytes: imageBytes, width: 1280, height: 720,
+  });
+  f.context.beforeVideoSubmission = async () => { f.sequence.push("submission-checkpoint"); };
+  f.input.continuation = { assetId: seed.id, index: 1, count: 2 };
+  assert.ok(await createOpenAIVideoService(config, f.dependencies).generate(f.input, f.context));
+  assert.deepEqual(f.readIds, [seed.id]);
+  assert.ok(f.sequence.indexOf("safety") < f.sequence.indexOf("submission-checkpoint"));
+  assert.ok(f.sequence.indexOf("submission-checkpoint") < f.sequence.indexOf("create"));
+  assert.match(f.calls[0].prompt, /Continuation 2 of 2/);
+  assert.doesNotMatch(f.calls[0].prompt, /PRIVATE_/);
+});
+
 test("six-shot Sora uses shot_04 and sora-2-pro without customer prompt content", async () => {
   const f = await fixture();
   const timeline = getTimeline("six-shot", "HERO_OF_THE_DAY");

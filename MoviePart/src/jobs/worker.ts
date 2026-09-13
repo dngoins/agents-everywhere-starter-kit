@@ -1,12 +1,11 @@
 import { MovieError, type MovieJob, type RenderResult, type StoryboardFrame } from "../domain";
-import type { GenerationContext, MovieConfig } from "../domain/services";
+import type { GenerationContext, MovieConfig, MovieCheckpoint } from "../domain/services";
 import { LocalMediaRepository } from "../server/media";
 import { JobStore, terminal, WORKER_HEARTBEAT_MS } from "./store";
 import { selectStoryboardFrames } from "../domain/storyboard-state";
 import { validateRenderInput } from "../render";
 
-type Checkpoint = (patch: Partial<Pick<MovieJob, "character" | "plan" | "hero" | "heroAttempted" | "result">>) => Promise<void>;
-export type MovieExecutor = (job: MovieJob, context: GenerationContext, checkpoint: Checkpoint, config: MovieConfig) => Promise<RenderResult>;
+export type MovieExecutor = (job: MovieJob, context: GenerationContext, checkpoint: MovieCheckpoint, config: MovieConfig) => Promise<RenderResult>;
 
 export class MovieWorker {
   readonly store: JobStore;

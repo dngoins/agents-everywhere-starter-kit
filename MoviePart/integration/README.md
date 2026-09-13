@@ -12,7 +12,17 @@ For Dwight's integrated robot workflow, use the [authoritative Tiya handoff](dwi
 
 `contracts.ts` is the shared TypeScript transport interface. `client.ts` is a small `fetch` client for Node.js 22+ or a same-origin browser.
 
-The studio now opts into `render_layout: "video-bookends"` alongside `enable_hero_video: true` and an explicit `video_provider`. This produces a **15-second** MP4: 3-second zoomed opening frame, 8-second generated clip, 4-second zoomed closing frame. Both stills come from the video's first/last frames, and there are no intermediate still-only shots. Native audio is aligned to 3–11 seconds. `JobView.renderLayout` and `result.renderLayout` identify this layout. Omitted `render_layout` preserves legacy behavior and durations; the director's four/six-reference plan remains unchanged in both layouts.
+The studio opts into `render_layout: "video-bookends"` alongside `enable_hero_video: true` and an explicit `video_provider`. `movie_duration_seconds` accepts **13, 15, 18, 23, or 28**, defaulting to 15. There are exactly two zooming still bookends, extracted from the first/last generated video frames, and no intermediate still-only shots. `JobView.renderLayout`, `JobView.movieDurationSeconds`, and `result.durationSeconds` identify the selected and completed output. `job.videoClips` exposes approved clips in playback order; `job.hero` remains the first clip for compatibility.
+
+| Seconds | Opening | Generated footage | Closing |
+|---|---|---|---|
+| 13 | 2s | 1 x 8s clip | 3s |
+| 15 | 3s | 1 x 8s clip | 4s |
+| 18 | 1s | 2 x 8s clips | 1s |
+| 23 | 3s | 2 x 8s clips | 4s |
+| 28 | 2s | 3 x 8s clips | 2s |
+
+Longer cuts generate additional continuation clips, never loops or slowed footage. Native audio is aligned independently for each clip. Retry preserves completed segments and resumes known operations without duplicate video submissions. Omitted `render_layout` preserves legacy behavior and durations; `movie_duration_seconds` is rejected unless the video-bookends layout is explicitly selected. The director's four/six-reference plan stays unchanged. These are additive fields on the existing `POST /api/movie-jobs` contract, not a new API or endpoint.
 
 ## Responsibilities
 

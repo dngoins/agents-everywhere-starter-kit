@@ -246,7 +246,12 @@ export function createOpenAIVideoService(config: MovieConfig, dependencies: Open
       if (!resume && model !== "sora-2" && model !== "sora-2-pro") {
         throw new MovieError("SORA_UNSUPPORTED_MODEL", "Select sora-2 or sora-2-pro for the eight-second vehicle hero.", 400);
       }
-      const reference = await approvedReference(frames[0].assetId, context);
+      if (input.continuation && (!Number.isInteger(input.continuation.index) || input.continuation.index < 1
+        || input.continuation.index > 2 || !Number.isInteger(input.continuation.count)
+        || input.continuation.count < 2 || input.continuation.count > 3 || input.continuation.index >= input.continuation.count)) {
+        throw new MovieError("INVALID_VIDEO_SEGMENT", "The continuation must identify a supported animation segment.", 400);
+      }
+      const reference = await approvedReference(input.continuation?.assetId ?? frames[0].assetId, context);
       const deadline = AbortSignal.timeout(timeoutMs);
       const signal = AbortSignal.any([context.signal, deadline]);
       const scoped = { ...context, signal };
@@ -266,8 +271,12 @@ export function createOpenAIVideoService(config: MovieConfig, dependencies: Open
           const extension = reference.mime === "image/jpeg" ? "jpg" : reference.mime.slice(6);
           const file = await toFile(reference.bytes, `approved-vehicle.${extension}`, { type: reference.mime });
           signal.throwIfAborted();
+          await context.beforeVideoSubmission?.();
+          signal.throwIfAborted();
           operation = await abortable(transport.create({
-            model, seconds: "8", size: "1280x720", prompt: motionPrompt(input), input_reference: file,
+            model, seconds: "8", size: "1280x720",
+            prompt: `${motionPrompt(input)}${input.continuation ? `\nContinuation ${input.continuation.index + 1} of ${input.continuation.count}: begin at the supplied final frame of the preceding car-only video. Continue the motion forward without replaying or restarting it; do not introduce people or human reflections.` : ""}`,
+            input_reference: file,
           }, { signal, maxRetries: 0, timeout: 120_000 }), signal);
           if (!operationIdPattern.test(operation.id)) throw new MovieError("SORA_OPERATION_MISSING", "Sora did not provide a recoverable video identifier. Do not automatically resubmit this paid request.", 502);
           operationId = operation.id;

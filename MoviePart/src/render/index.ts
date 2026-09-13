@@ -4,7 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import {
-  assetSchema, getRenderTimeline, getTimeline, MovieError, moviePlanSchema, renderLayoutSchema,
+  assetSchema, getMovieFormat, getRenderTimeline, getTimeline, MOVIE_DURATIONS, MovieError, moviePlanSchema, renderLayoutSchema,
   storyboardFrameSchema, videoArtifactSchema,
 } from "../domain";
 import type { GenerationContext, MovieConfig, RendererService } from "../domain/services";
@@ -13,6 +13,7 @@ import { mediaCommandPath } from "./paths";
 import { probeMedia, validateRenderedMedia } from "./probe";
 import { runMediaCommand, throwIfRenderCancelled } from "./process";
 import { isFrameApproved } from "../domain/storyboard-state";
+import { normalizeVideoClip, requireOwnedVideo } from "./continuation";
 
 type RenderInput = Parameters<RendererService["render"]>[0];
 
@@ -20,6 +21,7 @@ export function validateRenderInput(input: RenderInput, jobId: string): void {
   if (
     !assetSchema.shape.id.safeParse(jobId).success || !moviePlanSchema.safeParse(input.plan).success
     || !Array.isArray(input.frames) || !renderLayoutSchema.optional().safeParse(input.renderLayout).success
+    || input.movieDurationSeconds !== undefined && !MOVIE_DURATIONS.includes(input.movieDurationSeconds)
   ) {
     throw new MovieError("INVALID_RENDER_INPUT", "Rendering requires a valid job and planned, approved storyboard frames.", 400);
   }
@@ -48,6 +50,18 @@ export function validateRenderInput(input: RenderInput, jobId: string): void {
   }
   if (input.renderLayout === "video-bookends" && (movieFirst || !input.hero)) {
     throw new MovieError("ANIMATION_REQUIRED", "Video bookends require an approved generated hero clip and a reviewed storyboard. Still-image motion is not a substitute.", 409);
+  }
+  if (input.renderLayout === "video-bookends") {
+    const clips = input.videoClips === undefined ? [input.hero!] : input.videoClips;
+    if (!Array.isArray(clips) || clips.length !== getMovieFormat(input.movieDurationSeconds).clipCount) {
+      throw new MovieError("ANIMATION_REQUIRED", "The selected movie length requires its complete ordered list of generated eight-second clips.", 409);
+    }
+    if (clips.some(clip => !videoArtifactSchema.safeParse(clip).success || clip.shotId !== timeline.heroShotId
+      || clip.provider !== input.hero!.provider)
+      || clips[0].assetId !== input.hero!.assetId || clips[0].model !== input.hero!.model
+      || new Set(clips.map(clip => clip.assetId)).size !== clips.length) {
+      throw new MovieError("INVALID_RENDER_INPUT", "Generated clips must be distinct, match the planned hero and provider, and begin with the saved hero.", 400);
+    }
   }
 }
 
@@ -116,7 +130,8 @@ export function createRenderer(config: MovieConfig): RendererService {
         throw new MovieError("ANIMATION_REQUIRED", `Hybrid output requires its generated ${requiredProvider} clip. Still-image motion is not a substitute.`, 409);
       }
       const bookends = input.renderLayout === "video-bookends";
-      const timeline = getRenderTimeline(input.plan.storyFormat, input.plan.templateId, input.renderLayout);
+      const timeline = getRenderTimeline(input.plan.storyFormat, input.plan.templateId, input.renderLayout, input.movieDurationSeconds);
+      const clips = bookends ? input.videoClips ?? [input.hero!] : [];
       throwIfRenderCancelled(context.signal);
       const readiness = await checkReady(context.signal);
       throwIfRenderCancelled(context.signal);
@@ -130,9 +145,15 @@ export function createRenderer(config: MovieConfig): RendererService {
         const sources = await Promise.all(input.frames.map(async frame =>
           requireLocalFile(await context.media.assetPath(frame.assetId))));
         const sourcesByShot = new Map(input.frames.map((frame, index) => [frame.shotId, sources[index]]));
-        const heroPath = input.hero
+        const clipMedia = [];
+        for (const clip of clips) clipMedia.push(await requireOwnedVideo(config, clip, context));
+        if (new Set(clipMedia.map(clip => clip.path)).size !== clipMedia.length) {
+          throw new MovieError("INVALID_RENDER_INPUT", "Each middle segment must use a distinct generated clip.", 400);
+        }
+        const heroPath = bookends ? clipMedia[0].path : input.hero
           ? await requireLocalFile(await context.media.assetPath(input.hero.assetId)) : undefined;
-        const heroHasAudio = heroPath ? (await probeMedia(ffprobe, heroPath, context.signal)).audioStreamCount > 0 : false;
+        const heroHasAudio = bookends ? clipMedia.some(clip => clip.hasAudio)
+          : heroPath ? (await probeMedia(ffprobe, heroPath, context.signal)).audioStreamCount > 0 : false;
         let musicPath: string | undefined;
         if (config.musicPath !== undefined) {
           try {
@@ -147,7 +168,7 @@ export function createRenderer(config: MovieConfig): RendererService {
         } else if (!heroHasAudio) {
           await context.warn("No music bed or provider audio is available; the movie will be silent.");
         }
-        let normalizedHeroPath: string | undefined;
+        const normalizedClipPaths: string[] = [];
         const bookendSources: string[] = [];
         if (bookends) {
           // Keep every saved approval usable without including its still in the movie.
@@ -158,21 +179,19 @@ export function createRenderer(config: MovieConfig): RendererService {
               "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn", "-f", "null", "-",
             ], { signal: context.signal, label: "FFmpeg approved frame validation", timeoutMs: 60_000 });
           }
-          normalizedHeroPath = join(directory, `${timeline.heroShotId}.mp4`);
-          await context.report({
-            stage: "ASSEMBLING", provider: "FFmpeg", shotId: timeline.heroShotId,
-            message: "Normalizing the approved hero video once; its first and last decoded frames will form the two bookends.",
-          });
-          await runMediaCommand(ffmpeg!, buildHeroArguments(heroPath!, normalizedHeroPath, timeline, false), {
-            signal: context.signal, label: "FFmpeg hero normalization",
-          });
-          // No cloned-frame padding: the entire middle must be the approved video.
-          validateRenderedMedia(await probeMedia(ffprobe, normalizedHeroPath, context.signal, true), false, {
-            ...timeline, shotIds: [timeline.heroShotId], durations: [8], durationSeconds: 8,
-          });
+          for (let index = 0; index < clips.length; index++) {
+            const normalized = join(directory, `segment-${index + 1}.mp4`);
+            await context.report({
+              stage: "ASSEMBLING", provider: "FFmpeg", shotId: timeline.heroShotId,
+              message: `Normalizing approved video clip ${index + 1} of ${clips.length} once, without frozen-frame padding.`,
+            });
+            await normalizeVideoClip(ffmpeg!, ffprobe, clipMedia[index].path, normalized, clips[index], context);
+            normalizedClipPaths.push(normalized);
+          }
           for (const bookend of ["opening", "closing"] as const) {
             const imagePath = join(directory, `${bookend}.png`);
-            await runMediaCommand(ffmpeg!, buildBookendExtractionArguments(normalizedHeroPath, imagePath, bookend), {
+            const normalized = normalizedClipPaths[bookend === "opening" ? 0 : normalizedClipPaths.length - 1];
+            await runMediaCommand(ffmpeg!, buildBookendExtractionArguments(normalized, imagePath, bookend), {
               signal: context.signal, label: "FFmpeg bookend extraction", timeoutMs: 60_000,
             });
             bookendSources.push(await requireLocalFile(imagePath));
@@ -182,8 +201,8 @@ export function createRenderer(config: MovieConfig): RendererService {
         for (let index = 0; index < timeline.shotIds.length; index++) {
           throwIfRenderCancelled(context.signal);
           const shotId = timeline.shotIds[index];
-          if (shotId === timeline.heroShotId && normalizedHeroPath) {
-            shotPaths.push(normalizedHeroPath);
+          if (bookends && index > 0 && index < timeline.shotIds.length - 1) {
+            shotPaths.push(normalizedClipPaths[index - 1]);
             continue;
           }
           const bookend = bookends ? index === 0 ? "opening" : "closing" : undefined;
@@ -197,7 +216,7 @@ export function createRenderer(config: MovieConfig): RendererService {
                 ? "Creating the movie scene with cinematic image motion."
                 : "Animating the approved storyboard with a gentle centered pan and zoom.",
           });
-          const outputPath = join(directory, `${shotId}.mp4`);
+          const outputPath = join(directory, bookends ? `segment-${index}.mp4` : `${shotId}.mp4`);
           await runMediaCommand(ffmpeg!, shotId === timeline.heroShotId && heroPath
             ? buildHeroArguments(heroPath, outputPath, timeline)
             : buildStillArguments(bookend ? bookendSources[index === 0 ? 0 : 1] : sourcesByShot.get(shotId)!, outputPath, index, timeline, bookend), {
@@ -210,7 +229,9 @@ export function createRenderer(config: MovieConfig): RendererService {
           message: `Assembling ${timeline.shotIds.length} hard-cut shots ${heroHasAudio ? "with the provider's original audio" : musicPath ? "with the configured music bed" : "without audio"}${heroHasAudio && musicPath ? " and the configured music bed" : ""}.`,
         });
         const outputPath = join(directory, "movie.mp4");
-        await runMediaCommand(ffmpeg!, buildAssemblyArguments(shotPaths, outputPath, musicPath, timeline, heroHasAudio ? heroPath : undefined), {
+        const nativeAudio = bookends ? clipMedia.flatMap((clip, index) =>
+          clip.hasAudio ? [{ path: clip.path, segmentIndex: index + 1 }] : []) : heroHasAudio ? heroPath : undefined;
+        await runMediaCommand(ffmpeg!, buildAssemblyArguments(shotPaths, outputPath, musicPath, timeline, nativeAudio), {
           signal: context.signal, label: "FFmpeg final assembly", timeoutMs: 180_000,
         });
         const probe = await probeMedia(ffprobe, outputPath, context.signal, true);

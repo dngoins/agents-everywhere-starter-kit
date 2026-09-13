@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import type { AssetView, ConfigView, JobView } from "../domain/http";
-import { getTimeline, getRenderTimeline, type HeroMode, type JobRequest, type JobStatus, type StoryFormat, type TemplateId, type ProductionMode, type VideoProviderId } from "../domain";
+import { getTimeline, getRenderTimeline, getMovieFormat, MOVIE_DURATIONS, movieDurationSchema, type MovieDuration, type HeroMode, type JobRequest, type JobStatus, type StoryFormat, type TemplateId, type ProductionMode, type VideoProviderId } from "../domain";
 import { allTemplates as templates, getTemplate } from "../templates";
 import { mainStoryboardFrames } from "../lib/storyboard-view";
 import { MovieMagicClient, MovieMagicHttpError } from "../../integration/client";
@@ -57,6 +57,7 @@ export default function MovieStudio() {
   const [product, setProduct] = useState("tesla-model-y");
   const [template, setTemplate] = useState<TemplateId>("TOMORROW_DRIVE");
   const [storyFormat, setStoryFormat] = useState<StoryFormat>("four-shot");
+  const [movieDuration, setMovieDuration] = useState<MovieDuration>(15);
   const [heroMode, setHeroMode] = useState<HeroMode>("LIKENESS");
   const [productionMode, setProductionMode] = useState<ProductionMode>("reviewed-storyboard");
   const [videoProvider, setVideoProvider] = useState<VideoProviderId | "">("google-veo");
@@ -214,7 +215,8 @@ export default function MovieStudio() {
             })),
           },
           enable_hero_video: hero,
-          ...(hero && productionMode === "reviewed-storyboard" && videoProvider ? { video_provider: videoProvider, render_layout: "video-bookends" as const } : {}),
+          ...(hero && productionMode === "reviewed-storyboard" && videoProvider
+            ? { video_provider: videoProvider, render_layout: "video-bookends" as const, movie_duration_seconds: movieDuration } : {}),
           idempotency_key: crypto.randomUUID(),
         };
         pendingRequest.current = body;
@@ -328,9 +330,10 @@ export default function MovieStudio() {
   const movieFirst = (job?.productionMode ?? productionMode) === "movie-first";
   const completeMovie = job && (movieFirst || job.status === "COMPLETED" && approvedCount === shotIds.length) ? job.result : null;
   const newBookends = productionMode === "reviewed-storyboard" && hero;
+  const newMovieFormat = getMovieFormat(movieDuration);
   const renderLayout = job ? job.renderLayout ?? job.result?.renderLayout ?? "storyboard" : newBookends ? "video-bookends" : "storyboard";
   const bookends = renderLayout === "video-bookends";
-  const outputTimeline = getRenderTimeline(job?.plan?.storyFormat ?? storyFormat, job?.plan?.templateId ?? template, renderLayout);
+  const outputTimeline = getRenderTimeline(job?.plan?.storyFormat ?? storyFormat, job?.plan?.templateId ?? template, renderLayout, job?.movieDurationSeconds ?? movieDuration);
   return <div className="studio">
     <header className="masthead">
       <a href="/" className="wordmark" aria-label="Movie Magic home"><span className="mark">m<span>m</span></span> movie magic<span className="wordmark-dot">.</span></a>
@@ -412,17 +415,26 @@ export default function MovieStudio() {
               <p className="field-help">{productionMode === "movie-first"
                 ? "Creates an MP4 with cinematic motion from AI visuals, without the continuity scoring loop. Storyboard images are extracted from the finished movie. This is not fully AI-generated moving footage."
                 : "Every storyboard shot must pass continuity review before rendering."}</p>
-              <label className="field-label" htmlFor="story-format">STORY FORMAT</label>
+              {newBookends && <>
+                <label className="field-label" htmlFor="movie-duration">MOVIE LENGTH</label>
+                <select id="movie-duration" value={movieDuration} onChange={event => {
+                  changed(); setMovieDuration(movieDurationSchema.parse(Number(event.target.value)));
+                }}>
+                  {MOVIE_DURATIONS.map(duration => <option key={duration} value={duration}>{duration} seconds</option>)}
+                </select>
+                <p className="field-help">{newMovieFormat.clipCount} generated {newMovieFormat.clipCount === 1 ? "clip" : "clips"} ({newMovieFormat.clipCount * 8}s of real animation), plus two zoomed bookends. Longer cuts use additional video submissions and may cost more; footage is not looped or slowed down.</p>
+              </>}
+              <label className="field-label" htmlFor="story-format">REFERENCE STORY ARC</label>
               <select id="story-format" value={storyFormat} onChange={event => { changed(); setStoryFormat(event.target.value as StoryFormat); }}>
-                <option value="four-shot">Classic · four reference shots · {newBookends ? "15" : "18"}-second movie</option>
-                <option value="six-shot">Tiya's story arc · six reference shots · {newBookends ? "15" : template === "HERO_OF_THE_DAY" ? "24" : "23"}-second movie</option>
+                <option value="four-shot">Classic · four reference shots{newBookends ? "" : " · 18-second movie"}</option>
+                <option value="six-shot">Tiya's story arc · six reference shots{newBookends ? "" : ` · ${template === "HERO_OF_THE_DAY" ? "24" : "23"}-second movie`}</option>
               </select>
               <div className="template-options" role="group" aria-label="Movie template">{templates.map((item, index) =>
                 <button key={item.id} type="button" className={`template-option ${template === item.id ? "selected" : ""}`} aria-pressed={template === item.id} onClick={() => { changed(); setTemplate(item.id); }}>
                   <span className="template-index">0{index + 1}</span><span><strong>{item.name}</strong><small>{item.description}</small></span><span className="radio-dot" />
                 </button>)}</div>
               {productionMode === "reviewed-storyboard" && <>
-                <label className="hero-toggle"><input type="checkbox" checked={hero} onChange={event => { changed(); setHero(event.target.checked); setLikeness(false); }} /><span><strong>Include genuine generated animation</strong><small>{hero ? "Opening zoom (3s), real animation (8s), closing zoom (4s). No still-only shots in the middle." : "Disabled: output uses still-image motion only."}</small></span></label>
+                <label className="hero-toggle"><input type="checkbox" checked={hero} onChange={event => { changed(); setHero(event.target.checked); setLikeness(false); }} /><span><strong>Include genuine generated animation</strong><small>{hero ? `Opening zoom (${newMovieFormat.openingSeconds}s), real animation (${newMovieFormat.clipCount * 8}s), closing zoom (${newMovieFormat.closingSeconds}s). No still-only shots in the middle.` : "Disabled: output uses still-image motion only."}</small></span></label>
                 {hero && <>
                   <label className="field-label" htmlFor="video-provider">ANIMATION PROVIDER</label>
                   <select id="video-provider" value={videoProvider} onChange={event => { changed(); setVideoProvider(event.target.value as VideoProviderId); setLikeness(false); }}>
@@ -483,7 +495,7 @@ export default function MovieStudio() {
           {!!job?.warnings.length && <div className="notice"><strong>Production notes</strong>{job.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
 
           <div className="storyboard-heading"><h3>{movieFirst ? "Storyboard extracted from the movie" : "The storyboard"} <span>{String(storyboardFrames.length).padStart(2, "0")} / {String(shotIds.length).padStart(2, "0")}</span></h3><span className="small-muted">{movieFirst ? "ACTUAL MOVIE FRAMES" : "CONSISTENT REFERENCES. ONE STORY."}</span></div>
-          {bookends && <p className="field-help">These approved images are story references, not extra still shots in the movie. The final cut uses the animation's first and last frames as its only zoomed bookends, with real video throughout the middle.</p>}
+          {bookends && <p className="field-help">These approved images are story references, not extra still shots in the movie. The final cut uses the animation's first and last frames as its only zoomed bookends, with real video throughout the middle. {job ? `${job.videoClips?.length ?? Number(!!job.hero)} of ${getMovieFormat(job.movieDurationSeconds).clipCount} animation clips ready.` : ""}</p>}
           {job?.plan && !completeMovie && <p className="incomplete-label">{movieFirst ? "The movie is being made first. Its storyboard images will appear after encoding." : approvedCount < shotIds.length ? `Incomplete storyboard preview — ${approvedCount} of ${shotIds.length} shots approved. This is not a finished movie.` : "All storyboard shots are approved. Final movie assembly has not completed."}</p>}
           <div className={`storyboard-grid ${shotIds.length === 6 ? "six-shots" : ""}`}>{shotIds.map((shotId, index) => {
             const candidates = job?.frames.filter(item => item.shotId === shotId) ?? [];

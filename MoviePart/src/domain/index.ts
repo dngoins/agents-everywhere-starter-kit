@@ -10,6 +10,19 @@ export const productionModeSchema = z.enum(["reviewed-storyboard", "movie-first"
 export type ProductionMode = z.infer<typeof productionModeSchema>;
 export const renderLayoutSchema = z.enum(["storyboard", "video-bookends"]);
 export type RenderLayout = z.infer<typeof renderLayoutSchema>;
+export const MOVIE_DURATIONS = [13, 15, 18, 23, 28] as const;
+export const movieDurationSchema = z.union(MOVIE_DURATIONS.map(value => z.literal(value)));
+export type MovieDuration = z.infer<typeof movieDurationSchema>;
+const movieFormats: Record<MovieDuration, { openingSeconds: number; closingSeconds: number; clipCount: 1 | 2 | 3 }> = {
+  13: { openingSeconds: 2, clipCount: 1, closingSeconds: 3 },
+  15: { openingSeconds: 3, clipCount: 1, closingSeconds: 4 },
+  18: { openingSeconds: 1, clipCount: 2, closingSeconds: 1 },
+  23: { openingSeconds: 3, clipCount: 2, closingSeconds: 4 },
+  28: { openingSeconds: 2, clipCount: 3, closingSeconds: 2 },
+};
+export function getMovieFormat(duration: MovieDuration = 15) {
+  return movieFormats[movieDurationSchema.parse(duration)];
+}
 export const videoProviderSchema = z.enum(["openai-sora", "google-veo"]);
 export type VideoProviderId = z.infer<typeof videoProviderSchema>;
 export const isOpenAIHero = (plan: { videoProvider?: VideoProviderId; heroShotId: string }, shotId: string) =>
@@ -33,12 +46,14 @@ export function getTimeline(format?: StoryFormat, templateId?: TemplateId): {
   };
 }
 
-export function getRenderTimeline(format?: StoryFormat, templateId?: TemplateId, layout?: RenderLayout): ReturnType<typeof getTimeline> {
+export function getRenderTimeline(format?: StoryFormat, templateId?: TemplateId, layout?: RenderLayout, duration: MovieDuration = 15): ReturnType<typeof getTimeline> {
   const timeline = getTimeline(format, templateId);
   if (layout !== "video-bookends") return timeline;
+  const selected = getMovieFormat(duration);
   return {
-    shotIds: [timeline.shotIds[0], timeline.heroShotId, timeline.shotIds[timeline.shotIds.length - 1]],
-    durations: [3, 8, 4], heroShotId: timeline.heroShotId, durationSeconds: 15,
+    shotIds: [timeline.shotIds[0], ...Array.from({ length: selected.clipCount }, () => timeline.heroShotId), timeline.shotIds[timeline.shotIds.length - 1]],
+    durations: [selected.openingSeconds, ...Array.from({ length: selected.clipCount }, () => 8), selected.closingSeconds],
+    heroShotId: timeline.heroShotId, durationSeconds: duration,
   };
 }
 export const imageMimeSchema = z.enum(["image/jpeg", "image/png", "image/webp"]);
@@ -244,6 +259,14 @@ export const videoArtifactSchema = z.object({
   operationId: z.string().optional(),
 }).strict();
 export type VideoArtifact = z.infer<typeof videoArtifactSchema>;
+export const videoSegmentSchema = z.object({
+  index: z.number().int().min(0).max(2),
+  submitted: z.boolean(),
+  operationId: z.string().min(1).optional(),
+  startFrameAssetId: z.uuid().optional(),
+  clip: videoArtifactSchema.optional(),
+}).strict();
+export type VideoSegment = z.infer<typeof videoSegmentSchema>;
 export const renderResultSchema = z.object({
   assetId: z.uuid(),
   mode: z.enum(["storyboard-motion", "hybrid-video", "image-motion"]),
@@ -266,10 +289,14 @@ export const jobRequestSchema = z.object({
   hero_mode: heroModeSchema.optional(),
   production_mode: productionModeSchema.optional(),
   render_layout: renderLayoutSchema.optional(),
+  movie_duration_seconds: movieDurationSchema.optional(),
   enable_hero_video: z.boolean().default(false),
   video_provider: videoProviderSchema.optional(),
   idempotency_key: z.string().min(8).max(120),
 }).strict().superRefine((value, ctx) => {
+  if (value.movie_duration_seconds !== undefined && value.render_layout !== "video-bookends") {
+    ctx.addIssue({ code: "custom", message: "Selectable movie duration requires the video-bookends layout; legacy storyboard timelines are unchanged." });
+  }
   if (value.render_layout === "video-bookends" && (!value.enable_hero_video || !value.video_provider || value.production_mode === "movie-first")) {
     ctx.addIssue({ code: "custom", message: "Video bookends require reviewed storyboards and an explicitly selected video provider." });
   }
@@ -333,6 +360,7 @@ export const jobSchema = z.object({
   productionMode: productionModeSchema.optional(),
   hero: videoArtifactSchema.nullable(),
   heroAttempted: z.boolean().optional(),
+  videoSegments: z.array(videoSegmentSchema).max(3).optional(),
   result: renderResultSchema.nullable(),
   operations: z.array(z.object({ provider: z.string(), id: z.string() })),
   retries: z.array(retryRecordSchema).optional(),

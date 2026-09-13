@@ -248,3 +248,43 @@ test("an uncertain untracked Veo submission cannot be retried until an operation
   sample.job.operations.push({ provider: "Google Veo", id: "models/veo-3.1-generate-preview/operations/recovered" });
   assert.equal(retrySummary(sample.job).eligible, true);
 });
+
+test("longer movie lengths route through a complete animation sequence, not stretched stills", async () => {
+  for (const duration of [18, 23, 28] as const) {
+    const sample = fixture(true);
+    sample.job.request.video_provider = "google-veo";
+    sample.job.request.render_layout = "video-bookends";
+    sample.job.request.movie_duration_seconds = duration;
+    sample.plan.videoProvider = "google-veo";
+    const clips = Array.from({ length: duration === 28 ? 3 : 2 }, () => ({
+      assetId: randomUUID(), shotId: "shot_03" as const, provider: "Google Veo" as const, model: "offline-test",
+    }));
+    sample.services.sequence = async job => {
+      assert.equal(job.request.movie_duration_seconds, duration);
+      return clips;
+    };
+    sample.services.video.generate = async () => assert.fail("Use the sequence path for longer movies");
+    sample.services.renderer.render = async input => {
+      assert.deepEqual(input.videoClips, clips);
+      assert.deepEqual(input.hero, clips[0]);
+      assert.equal(input.movieDurationSeconds, duration);
+      return { ...sample.result, mode: "hybrid-video", durationSeconds: duration, renderLayout: "video-bookends" };
+    };
+    assert.equal((await sample.run()).durationSeconds, duration);
+  }
+});
+
+test("the 13-second preset retains a full single eight-second clip", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "google-veo";
+  sample.job.request.render_layout = "video-bookends";
+  sample.job.request.movie_duration_seconds = 13;
+  sample.plan.videoProvider = "google-veo";
+  sample.services.video.generate = async () => ({ assetId: randomUUID(), shotId: "shot_03", provider: "Google Veo", model: "offline-test" });
+  sample.services.renderer.render = async input => {
+    assert.equal(input.movieDurationSeconds, 13);
+    assert.ok(input.hero);
+    return { ...sample.result, mode: "hybrid-video", durationSeconds: 13, renderLayout: "video-bookends" };
+  };
+  assert.equal((await sample.run()).durationSeconds, 13);
+});

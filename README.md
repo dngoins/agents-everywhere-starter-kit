@@ -131,13 +131,14 @@ Movie Magic builds a controlled film from stable references rather than asking o
 | Hero modes | `LIKENESS` uses approved customer photos; `POV` and `PERSONALIZED` omit customer photos from provider calls |
 | Baseline rendering | Usable scene visuals with pan/zoom, optionally scored with a permitted local audio file; movie-first does not claim continuity approval |
 | Default animation | 15-second film: 3-second opening zoom, 8-second Veo clip with native audio, 4-second closing zoom. Both stills come from the clip; no still-only shots in the middle |
+| Selectable movie lengths | 13, 15, 18, 23, or 28 seconds, independent of the reference-story format. Longer cuts use two or three generated clips, never repeated footage or intermediate stills |
 | Required OpenAI animation | An eight-second Sora car-only clip after storyboard approval; failure blocks the hybrid movie instead of substituting still-image zooms |
 
 The studio's output is a validated 16:9, 720p, 24 fps MP4. `image-motion` identifies movie-first animated-image output; `storyboard-motion` and `hybrid-video` describe reviewed stills or a hybrid with an existing/generated hero clip. These are **not** the orchestrator's result-provenance labels, and animated stills are not fully AI-generated moving footage.
 
-The default bookend cut is identified by `renderLayout: "video-bookends"`. Native clip audio plays during the middle segment (3–11 seconds); a licensed music bed is optional, not required for generated audio. Approved storyboard references and the director plan remain available even though intermediate still images are not inserted into this cut.
+The bookend composition is identified by `renderLayout: "video-bookends"`, with `movie_duration_seconds` selecting its runtime. Each clip's native audio follows its place in the sequence (3–11 seconds for the default 15-second cut); a licensed music bed is optional, not required for generated audio. Approved storyboard references and the director plan remain available even though intermediate still images are not inserted into this cut. Existing movies are not changed when another duration is selected.
 
-Explicit retry preserves approved work. Interrupted end-frame preparation can resume before the first video submission; an already submitted Veo operation is resumed by ID. If a paid submission may have started but its ID is missing, the app blocks blind resubmission rather than repeatedly accepting retries that cannot progress.
+Explicit retry preserves approved work, including completed segments of longer movies. Interrupted end-frame preparation can resume before the first video submission; an already submitted video operation is resumed by ID. If a paid submission may have started but its ID is missing, the app blocks blind resubmission rather than repeatedly accepting retries that cannot progress.
 
 Dwight's current `demo-car-v1` brief instead describes an unbranded synthetic concept, with its own scenes, on-screen copy, CTA, and duration. The media service respects that brief; it does not convert it into a Tesla or Toyota advertisement.
 

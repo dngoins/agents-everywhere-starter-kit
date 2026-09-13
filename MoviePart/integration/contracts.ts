@@ -6,6 +6,7 @@
 export type TemplateId = "VELOCITY" | "TOMORROW_DRIVE" | "DREAM_ROUTE" | "HERO_OF_THE_DAY";
 export type ProductionMode = "reviewed-storyboard" | "movie-first";
 export type RenderLayout = "storyboard" | "video-bookends";
+export type MovieDuration = 13 | 15 | 18 | 23 | 28;
 export type VideoProviderId = "openai-sora" | "google-veo";
 export type StoryFormat = "four-shot" | "six-shot";
 export type HeroMode = "LIKENESS" | "POV" | "PERSONALIZED";
@@ -38,8 +39,10 @@ export interface PersonalizationProfile {
 export interface MovieJobRequest {
   schema_version: 1;
   production_mode?: ProductionMode;
-  /** Video bookends: 3-second opening zoom, 8-second real video, 4-second closing zoom. Requires video_provider. */
+  /** Two zoomed still bookends around genuine generated footage. Requires video_provider. */
   render_layout?: RenderLayout;
+  /** Requires video-bookends; defaults to 15. Longer formats generate additional eight-second clips. */
+  movie_duration_seconds?: MovieDuration;
   /** Opaque robot/conversation identifier, echoed as JobView.sessionId. */
   session_id: string;
   /** Upload photos first; these are server-issued IDs, never paths or URLs. */
@@ -51,7 +54,7 @@ export interface MovieJobRequest {
   personalization_profile: PersonalizationProfile;
   /** Defaults to DREAM_ROUTE when omitted. */
   preferred_template?: TemplateId;
-  /** Reference-plan format. Legacy output is 18/23/24 seconds; video-bookends output is always 15 seconds. */
+  /** Reference-plan format, independent of movie_duration_seconds. Legacy output stays 18/23/24 seconds. */
   story_format?: StoryFormat;
   /** Defaults to LIKENESS. POV/PERSONALIZED never send customer photos to providers. */
   hero_mode?: HeroMode;
@@ -253,6 +256,7 @@ export interface JobView {
   status: JobStatus;
   productionMode?: ProductionMode;
   renderLayout?: RenderLayout;
+  movieDurationSeconds?: MovieDuration;
   createdAt: string;
   updatedAt: string;
   events: JobEvent[];
@@ -262,6 +266,8 @@ export interface JobView {
   plan: MoviePlan | null;
   frames: StoryboardFrame[];
   hero: VideoArtifact | null;
+  /** Approved sequence clips, in playback order; the first is also available as hero. */
+  videoClips?: VideoArtifact[];
   /** Available only after the output file was successfully rendered and probed. */
   result: RenderResult | null;
   /** Explicit recovery uses the saved plan and approved assets, never edited form inputs. */

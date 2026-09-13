@@ -163,15 +163,15 @@ Snapshot `revision` is the polling cursor; context has its own revision. A `rese
 
 The web studio defaults to reviewed storyboards and a required Google Veo clip. Astra handles reference analysis and direction; Flare handles stills; a separate Google key authorizes Veo animation. Explicit `video_provider` selection requires an actual clip before hybrid assembly, never a slideshow fallback. When the temporary OpenAI Sora adapter is explicitly selected instead, its hero is car-only because that API rejects human-face references. DaVinci API integration remains unverified and is not represented as working.
 
-The studio selects `render_layout: "video-bookends"` for a 15-second final cut. The approved four/six-shot plan remains reference material; only two extracted video frames become still segments. The middle is entirely generated footage, with native audio synchronized at 3–11 seconds. Sora bookend movies are therefore entirely car-only, including their extracted stills. API callers omitting the layout keep the legacy storyboard sequence.
+The studio selects `render_layout: "video-bookends"` with `movie_duration_seconds` set independently of the reference-story format: 13, 15 (default), 18, 23, or 28 seconds. The approved four/six-shot plan remains reference material; only two extracted video frames become still segments. The middle is entirely generated footage, with one to three eight-second clips and separately aligned native audio. A continuation is conditioned on the preceding approved video's final frame. Sora bookend movies are entirely car-only, including their extracted stills. API callers omitting the layout keep the legacy storyboard sequence.
 
 ```mermaid
 flowchart LR
     Approved["Approved generated clip"] --> Normalize["Normalize to 8 seconds / 24 fps"]
-    Normalize --> First["Exact first frame<br/>3-second centered zoom out"]
-    Normalize --> Video["8 seconds of genuine animation<br/>Native audio retained"]
-    Normalize --> Last["Exact last frame<br/>4-second centered zoom in"]
-    First --> Cut["15-second MP4<br/>Opening - video - closing"]
+    Normalize --> First["First frame of first clip<br/>Centered opening zoom"]
+    Normalize --> Video["1-3 distinct eight-second clips<br/>Per-clip native audio retained"]
+    Normalize --> Last["Last frame of final clip<br/>Centered closing zoom"]
+    First --> Cut["Selected-duration MP4<br/>Opening - video sequence - closing"]
     Video --> Cut
     Last --> Cut
 ```
@@ -241,7 +241,7 @@ Original photo bytes remain primary identity references in likeness mode. Produc
 
 ### Timeline contract
 
-The following are reference-plan timelines and legacy storyboard-layout output timings. `getRenderTimeline` derives a separate **3, 8, 4-second** output for video bookends without rewriting the director plan; the hero remains `shot_03` or `shot_04` in the saved artifacts.
+The following are reference-plan timelines and legacy storyboard-layout output timings. `getRenderTimeline` derives the selected bookend output without rewriting the director plan: **2+8+3=13**, **3+8+4=15**, **1+8+8+1=18**, **3+8+8+4=23**, or **2+8+8+8+2=28**. The source hero remains `shot_03` or `shot_04`; ordered `videoSegments` checkpoints distinguish its continuations and their paid-operation boundaries.
 
 | Format | Shot durations in seconds | Total | Optional hero |
 |---|---|---|---|

@@ -20,9 +20,21 @@ The kiosk's photo control uses the tablet/browser's file or camera picker after 
 
 Worker heartbeat and lost-lease failures are reported as errors and exit nonzero, while intentional `SIGINT`/`SIGTERM` shutdowns are logged separately. A stopped worker never automatically resubmits paid operations; saved plans, approvals and generated assets remain available for explicit recovery.
 
-The studio defaults to **reviewed storyboards with required Google Veo animation**. Astra handles vision/direction, Flare creates the stills, and Veo creates an eight-second moving clip after approval. Pan/zoom animation of a photograph does not satisfy the animation requirement.
+The studio defaults to **reviewed storyboards with required Google Veo animation**. Astra handles vision/direction, Flare creates the reference stills, and Veo creates one to three eight-second moving clips after approval. Pan/zoom animation of a photograph does not satisfy the animation requirement.
 
 The default final cut is **15 seconds: a 3-second opening zoom, 8 seconds of real generated video, and a 4-second closing zoom**. The two bookend images are extracted from the approved video's exact first and last normalized frames. There are no still-only shots in the middle. The four/six-shot storyboard remains the approved reference plan, not a promise to insert every reference image into this cut. The studio sends `render_layout: "video-bookends"`; API callers omitting it retain the legacy storyboard layout.
+
+**Movie length is independent of the reference story arc.** Choose 13, 15, 18, 23, or 28 seconds:
+
+| Movie length | Opening zoom | Genuine animation | Closing zoom | Video clips |
+|---|---|---|---|---|
+| 13 seconds | 2 seconds | 8 seconds | 3 seconds | 1 |
+| 15 seconds (default) | 3 seconds | 8 seconds | 4 seconds | 1 |
+| 18 seconds | 1 second | 16 seconds | 1 second | 2 |
+| 23 seconds | 3 seconds | 16 seconds | 4 seconds | 2 |
+| 28 seconds | 2 seconds | 24 seconds | 2 seconds | 3 |
+
+Longer cuts generate additional footage; they do not repeat a clip, slow it down, freeze it, or lengthen intermediate stills. Each continuation starts from the preceding approved clip's final frame. More video submissions and reviews can increase cost and production time. The selected duration is frozen with the request as `movie_duration_seconds`; changing the form does not change an existing movie or retry.
 
 `davici.ai` is a parked domain; the similarly named `davinci.ai` is a media platform, but a supported developer API has not been verified. No customer images or credentials are sent there. The supplied prerecorded example can be used for the default demo independently of a generation provider.
 
@@ -57,9 +69,9 @@ flowchart TD
     Retry["Bounded correction"]
     Failure["Explicit failure<br/>Retain inspectable artifacts"]
     Endpoint["Prepare or reuse approved hero end frame"]
-    Hero["Required eight-second generated clip<br/>Resume a saved operation when available"]
+    Hero["Required eight-second video segments<br/>Resume each saved operation when available"]
     VideoReview{"Video validation and continuity approved?"}
-    Render["Extract first/last video frames<br/>Assemble 3s zoom + 8s video + 4s zoom"]
+    Render["Extract sequence endpoints<br/>Assemble chosen duration with two zoomed bookends"]
     Output["Private playable MP4"]
 
     Mode --> Photos --> Character
@@ -92,9 +104,9 @@ Four original templates are included:
 | `DREAM_ROUTE` | A warm lifestyle journey toward an approved personal interest |
 | `HERO_OF_THE_DAY` | Tiya's warm, human story about showing up for what matters |
 
-The four-shot reference plan has beats lasting 3, 3, 8, and 4 seconds. Explicit `story_format: "six-shot"` selects Tiya's ordinary moment / spark / crossing over / impossible / mastery / payoff arc: 3, 3, 2, 8, 3, 4 seconds, or 3, 3, 3, 8, 3, 4 for `HERO_OF_THE_DAY`. These remain the reference-plan timings. **Both formats produce a 15-second movie in the studio's default video-bookends layout.** API callers omitting `render_layout` retain the legacy 18-, 23-, or 24-second storyboard-layout movie.
+The four-shot reference plan has beats lasting 3, 3, 8, and 4 seconds. Explicit `story_format: "six-shot"` selects Tiya's ordinary moment / spark / crossing over / impossible / mastery / payoff arc: 3, 3, 2, 8, 3, 4 seconds, or 3, 3, 3, 8, 3, 4 for `HERO_OF_THE_DAY`. These remain the reference-plan timings. **Either reference format can use any supported movie length; the default is 15 seconds.** API callers omitting `render_layout` retain the legacy 18-, 23-, or 24-second storyboard-layout movie.
 
-Output is 1280x720, 16:9, 24 fps. In the default layout, the generated clip supplies all middle footage and both bookend images; the original approved storyboard is retained separately. Legacy storyboard-layout hybrids replace only the hero shot (third in classic, fourth in six-shot). Output metadata identifies `image-motion`, `storyboard-motion`, or `hybrid-video`; `renderLayout: "video-bookends"` identifies the 15-second cut.
+Output is 1280x720, 16:9, 24 fps. In the bookend layout, the generated sequence supplies all middle footage and both bookend images; the original approved storyboard is retained separately. Legacy storyboard-layout hybrids replace only the hero shot (third in classic, fourth in six-shot). Output metadata identifies `image-motion`, `storyboard-motion`, or `hybrid-video`; `renderLayout: "video-bookends"` identifies the composition, and `durationSeconds` reports the actual selected runtime.
 
 Hero modes are explicit, not automatic likeness-failure fallbacks: `LIKENESS` uses approved customer photos; `POV` shows a first-person view without the customer's face; `PERSONALIZED` uses a generic driver from behind or in silhouette. Non-likeness modes do not upload or transmit customer photos.
 
@@ -132,7 +144,7 @@ The [example environment file](.env.example) lists the supported operator settin
 | `OPENAI_VIDEO_MODEL` | Optional Sora selection, default `sora-2-pro`; setting it does not switch the studio away from Veo |
 | `MEDIA_SERVICE_TOKEN`, `MEDIA_SERVICE_PORT`, `MEDIA_SERVICE_JOB_TIMEOUT_MS` | Separate server-to-server service: private token, port 3201, 600000 ms timeout (10 minutes) |
 
-Use a nonempty `MOVIE_DATA_DIR`; the studio and media-service entry points handle empty values differently. Leave unused executable overrides commented out rather than assigning empty strings, particularly when running the media service. No `NEXT_PUBLIC_*` provider credentials are needed. The default 15-second layout is sent as `render_layout: "video-bookends"` in the job request, not configured through `.env`.
+Use a nonempty `MOVIE_DATA_DIR`; the studio and media-service entry points handle empty values differently. Leave unused executable overrides commented out rather than assigning empty strings, particularly when running the media service. No `NEXT_PUBLIC_*` provider credentials are needed. Layout and duration are request settings (`render_layout` and `movie_duration_seconds`), not `.env` settings.
 
 Storyboard request options depend on the image model. GPT Image 2.x, including `gpt-image-2.5-flare`, is sent a native 16:9 size without `input_fidelity`; the endpoint rejects that legacy parameter for Flare. GPT Image 1/1.5 uses the supported landscape size and high input fidelity; GPT Image 1 Mini omits the fidelity parameter. Final frames are normalized to 1280x720 without stretching or cropping the references. A parameter-rejection error is not a billing failure.
 
@@ -208,6 +220,8 @@ For required Veo movies, an explicit retry resumes the saved Google operation wh
 
 Endpoint preparation is separate from video submission: the durable video-attempt guard is written only after the end frame is approved, immediately before calling Veo. An interrupted preparation can therefore resume on explicit retry, retaining the main storyboard and any approved endpoint. If submission began but no operation ID was saved, recovery is blocked with an explicit uncertain-submission message instead of offering retries that cannot progress.
 
+Longer movies checkpoint each animation segment separately. A retry reuses approved clips, resumes a pending segment by its recorded operation ID, and generates only the remaining segments. No shortened movie is presented as complete when a required segment is missing. A lost segment checkpoint can recover its already-recorded operation; an uncertain submission without an ID remains blocked to avoid duplicate charges.
+
 Retry uses the saved movie settings, not edits in the creation form. Missing or corrupted approved files block recovery instead of silently charging for replacement. Restore those files or explicitly create a new take. Jobs that failed before saving a complete plan need a new take; active and completed jobs cannot be requeued by the retry endpoint.
 
 ### Customer and car references
@@ -224,7 +238,7 @@ The studio now offers **Tesla Model Y** and **Toyota Tundra Hybrid** separately.
 
 The npm dependencies provide local `ffmpeg-static` and `ffprobe-static` binaries. No machine-wide install is required on supported platforms. To use your own binaries, set `FFMPEG_PATH` and `FFPROBE_PATH` to absolute paths.
 
-Hybrid movies preserve the generated clip's native audio. In the default bookend cut, audio follows the video from **3 to 11 seconds**. Legacy storyboard layouts start native audio at 6 seconds for four-shot stories, or 8/9 seconds for six-shot stories. Short audio is padded with silence, not looped; still-image shots have no generated soundtrack. Optional `MOVIE_MUSIC_PATH` points to a local music file you have permission to use and is mixed underneath native audio across the full movie. Only movies with neither source are silent, and the UI/manifest reports that explicitly. An audio cue in the director plan is not a generated sound effect.
+Hybrid movies preserve each generated clip's native audio at its own position in the sequence. In the default 15-second bookend cut, audio follows the video from **3 to 11 seconds**; other durations follow the table above. A clip without audio contributes silence, not a replay of another clip's sound. Legacy storyboard layouts start native audio at 6 seconds for four-shot stories, or 8/9 seconds for six-shot stories. Short audio is padded with silence, not looped; still-image shots have no generated soundtrack. Optional `MOVIE_MUSIC_PATH` points to a local music file you have permission to use and is mixed underneath native audio across the full movie. Only movies with neither source are silent, and the UI/manifest reports that explicitly. An audio cue in the director plan is not a generated sound effect.
 
 ### Google Veo animation
 
@@ -235,7 +249,7 @@ VEO_MODEL=veo-3.1-generate-preview
 
 The studio selects Google Veo by default. Configure `GEMINI_API_KEY` in the private `MoviePart\.env`, keep `VEO_MODEL=veo-3.1-generate-preview`, and restart the studio and worker. An OpenAI key cannot authenticate to Google.
 
-New studio jobs send `enable_hero_video: true`, `video_provider: "google-veo"` and `render_layout: "video-bookends"`. Approved hero start/end frames guide the eight-second generated clip. If Google access, quota, generation or validation fails, the job stops; **no still-only slideshow is substituted for a required animation**.
+New studio jobs send `enable_hero_video: true`, `video_provider: "google-veo"`, `render_layout: "video-bookends"`, and the selected `movie_duration_seconds`. Approved hero start/end frames guide the first eight-second clip. Longer cuts use the previous clip's final frame to guide each additional eight-second continuation; they do not generate another main storyboard. If Google access, quota, generation or validation fails, the job stops with saved work intact; **no still-only slideshow or shorter cut is substituted for required animation**.
 
 Legacy API jobs that omit `video_provider` retain their explicitly optional hero behavior. Image-motion-only output remains a separately selected, clearly labeled mode. Google provider calls may incur charges and require the relevant account's model access.
 
@@ -316,11 +330,12 @@ Use explicit local photo paths only from the trusted operator CLI:
 npm run cli -- --check
 npm run cli -- --consent --template VELOCITY --format six-shot --photo .\demo-data\customer-01\front.jpg --photo .\demo-data\customer-01\three-quarter.jpg --interests "dogs, Egypt"
 npm run cli -- --consent --template HERO_OF_THE_DAY --format six-shot --mode POV --city Miami
+npm run cli -- --consent --template DREAM_ROUTE --format six-shot --mode POV --duration 23 --video-provider google-veo
 ```
 
 The CLI calls the studio's existing authenticated upload/job API. It does not discover or silently upload private demo files. `--consent` is an operator assertion of actual permission, not a substitute for obtaining it.
 
-The current CLI retains the legacy storyboard layout: `--hero` requests an optional Veo enhancement, not the studio's required-video bookend mode. Use the web studio or the portable API client with explicit `video_provider` and `render_layout: "video-bookends"` for the default 15-second film. `MOVIE_STUDIO_URL` changes only the CLI destination; the bundled web start scripts still bind to `127.0.0.1:3200`.
+Without `--duration`, the CLI retains the legacy storyboard layout: `--hero` requests an optional Veo enhancement. `--duration 13|15|18|23|28` opts into required-video bookends and defaults to Google Veo; optional `--video-provider openai-sora` selects the car-only alternative and requires `--duration`. Longer formats may incur two or three video submissions. `MOVIE_STUDIO_URL` changes only the CLI destination; the bundled web start scripts still bind to `127.0.0.1:3200`.
 
 ## Privacy and truthful progress
 

@@ -23,7 +23,7 @@ test("portable client preserves idempotency and sends machine token in a header"
     schema_version: 1, session_id: "robot-session", customer_reference_asset_ids: ["asset"],
     primary_reference_asset_id: "asset", consent: { likeness: true, personalization: true },
     product_id: "demo", personalization_profile: { signals: [] }, idempotency_key: "same-key",
-    enable_hero_video: true, video_provider: "google-veo", render_layout: "video-bookends",
+    enable_hero_video: true, video_provider: "google-veo", render_layout: "video-bookends", movie_duration_seconds: 23,
   };
   await client.createJob(request);
   await client.createJob(request);
@@ -32,6 +32,7 @@ test("portable client preserves idempotency and sends machine token in a header"
   assert.equal(calls[0].url, "http://127.0.0.1:3200/api/movie-jobs");
   assert.equal(calls[0].init?.redirect, "error");
   assert.equal(JSON.parse(String(calls[0].init?.body)).render_layout, "video-bookends");
+  assert.equal(JSON.parse(String(calls[0].init?.body)).movie_duration_seconds, 23);
 });
 test("client surfaces controlled API errors and keeps token out of URLs", async () => {
   const client = new MovieMagicClient({
