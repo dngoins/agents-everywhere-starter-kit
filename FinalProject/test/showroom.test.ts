@@ -285,3 +285,37 @@ test('Stop and consent withdrawal bypass a blocked calendar action and stale rev
   release(); await pending;
   assert.equal(f.snapshot().calendar.status, 'scheduled');
 });
+
+test('an uncertain calendar confirmation reconciles only its exact original event and immutable draft', async t => {
+  const requests: { confirmationId: string; draft: unknown }[] = [];
+  const calendar: ShowroomCalendar = {
+    draft: (proposal, product) => ({
+      startTime: proposal.startTime, endTime: new Date(Date.parse(proposal.startTime) + 3_600_000).toISOString(),
+      timeZone: 'America/New_York', attendees: [proposal.customerEmail], subject: 'Test drive', location: 'Showroom',
+      productId: product.id, productName: product.name,
+    }),
+    checkAvailability: async () => ({ available: true }),
+    confirm: async request => {
+      requests.push({ confirmationId: request.confirmationId, draft: structuredClone(request.draft) });
+      if (requests.length === 1) throw new ProviderFailure('CALENDAR_UNCERTAIN', 'Simulated uncertain provider acceptance.', false, true);
+      return { status: 'created', eventId: 'one-reconciled-event', invitationsRequested: true };
+    },
+  };
+  const f = await setup(t, { calendar });
+  const ready = await f.movie();
+  if (ready.studio.status !== 'ready') throw new Error('Expected ready');
+  const playback = { jobId: ready.studio.jobId, assetId: ready.studio.assetId, playbackId: randomUUID() };
+  await f.action('playback_started', playback); await f.action('playback_ended', playback);
+  await f.action('consent_recorded', { ...consent, calendar: true }); await f.confirm();
+  await f.action('calendar_draft_proposed', { startTime: '2026-09-20T15:00:00-04:00', customerEmail: 'customer@example.test' });
+  const pending = f.snapshot().pendingAction!;
+  const event = { schemaVersion: 1, eventId: randomUUID(), expectedRevision: f.snapshot().revision,
+    type: 'action_confirmed', payload: { pendingActionId: pending.pendingActionId,
+      confirmationFingerprint: pending.confirmationFingerprint, decision: 'approve', channel: 'touch' } };
+  assert.equal((await f.service.action(f.created.sessionId, event)).calendar.status, 'uncertain');
+  await assert.rejects(f.action('calendar_draft_proposed', { startTime: '2026-09-20T16:00:00-04:00', customerEmail: 'customer@example.test' }), /Reconcile/);
+  assert.equal((await f.service.action(f.created.sessionId, event)).calendar.status, 'scheduled');
+  assert.deepEqual(requests[1], requests[0]);
+  await f.service.action(f.created.sessionId, event);
+  assert.equal(requests.length, 2);
+});

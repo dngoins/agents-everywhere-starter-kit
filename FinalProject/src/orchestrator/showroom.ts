@@ -31,6 +31,7 @@ interface SessionRecord {
   pulseCount: number;
   pulseMs: number;
   lastPulseAt: number;
+  calendarRequest?: { eventId: string; confirmationId: string; draftId: string; draft: AppointmentDraft };
 }
 export interface ShowroomCalendar {
   draft(input: CalendarDraftProposal, product: { id: string; name: string }): AppointmentDraft;
@@ -55,6 +56,7 @@ export interface ShowroomAuthority {
 export class ShowroomService {
   private readonly records = new Map<string, SessionRecord>();
   private readonly mutations = new Map<string, Promise<unknown>>();
+  private readonly activeWork = new Set<Promise<void>>();
   private readonly now: () => number;
   constructor(private readonly options: {
     authority: ShowroomAuthority; provider: StudioProvider; mode?: 'studio' | 'fixture';
@@ -147,6 +149,10 @@ export class ShowroomService {
       const previous = record.receipts.get(action.eventId);
       if (previous) {
         if (previous.fingerprint !== digest) throw new ApiError(409, 'EVENT_CONFLICT', 'This event ID was used for different input.');
+        if (view.state !== 'cancelled' && view.calendar.status === 'uncertain'
+            && action.type === 'action_confirmed' && record.calendarRequest?.eventId === action.eventId) {
+          await this.submitCalendar(record);
+        }
         return { ...this.snapshot(sessionId), acknowledgement: { eventId: action.eventId, revision: previous.revision } };
       }
       this.mutable(record);
@@ -386,26 +392,20 @@ export class ShowroomService {
         const controller = new AbortController();
         record.operation = controller;
         this.bump(record, 'showroom_studio_accepted', 'media_pending');
-        record.work = this.runStudio(record, accepted, jobId, controller);
+        const work = this.runStudio(record, accepted, jobId, controller);
+        record.work = work;
+        this.activeWork.add(work);
+        void work.then(() => this.activeWork.delete(work), () => this.activeWork.delete(work));
         break;
       }
       case 'calendar': {
         if (!this.options.calendar || !view.consent?.calendar) throw new ApiError(503, 'FOLLOWUP_DISABLED', 'Calendar scheduling is not configured or consented.');
-        const confirmationId = pending.pendingActionId;
+        record.calendarRequest = {
+          eventId: action.eventId, confirmationId: pending.pendingActionId,
+          draftId: pending.payload.draftId, draft: clone(pending.payload.appointment),
+        };
         view.pendingAction = null;
-        view.calendar = { status: 'submitting', draftId: pending.payload.draftId, confirmationId };
-        this.bump(record, 'showroom_calendar_submitting');
-        try {
-          const result = await this.options.calendar.confirm({ confirmationId, confirmed: true, draft: clone(pending.payload.appointment) });
-          if (result.status !== 'created' || !result.invitationsRequested) throw new ProviderFailure('CALENDAR_RESULT_UNCERTAIN', 'The invitation result could not be confirmed.', false, true);
-          view.calendar = { status: 'scheduled', draftId: pending.payload.draftId, confirmationId, eventId: result.eventId, invitationStatus: 'sent' };
-          if (view.state !== 'cancelled') this.bump(record, 'showroom_calendar_scheduled');
-        } catch (error) {
-          const uncertain = error instanceof ProviderFailure && error.acceptanceUncertain;
-          view.calendar = { status: uncertain ? 'uncertain' : 'failed', draftId: pending.payload.draftId,
-            error: { code: error instanceof ProviderFailure ? error.code : 'CALENDAR_FAILED', message: 'The calendar invitation was not confirmed. Do not submit a replacement while its outcome is uncertain.' } };
-          if (view.state !== 'cancelled') this.bump(record, 'showroom_calendar_failed');
-        }
+        await this.submitCalendar(record);
         break;
       }
       case 'motion': {
@@ -424,6 +424,30 @@ export class ShowroomService {
         this.bump(record, 'showroom_motion_confirmed');
         break;
       }
+    }
+
+  }
+
+  private async submitCalendar(record: SessionRecord): Promise<void> {
+    const request = record.calendarRequest;
+    if (!request || !this.options.calendar) throw new ApiError(409, 'CALENDAR_CONFIRMATION_MISSING', 'No confirmed appointment is available to reconcile.');
+    const view = record.view;
+    view.calendar = { status: 'submitting', draftId: request.draftId, confirmationId: request.confirmationId };
+    this.bump(record, 'showroom_calendar_submitting');
+    try {
+      const result = await this.options.calendar.confirm({
+        confirmationId: request.confirmationId, confirmed: true, draft: clone(request.draft),
+      });
+      if (result.status !== 'created' || !result.invitationsRequested) throw new ProviderFailure('CALENDAR_RESULT_UNCERTAIN', 'The invitation result could not be confirmed.', false, true);
+      view.calendar = { status: 'scheduled', draftId: request.draftId, confirmationId: request.confirmationId, eventId: result.eventId, invitationStatus: 'sent' };
+      record.calendarRequest = undefined;
+      if (view.state !== 'cancelled') this.bump(record, 'showroom_calendar_scheduled');
+    } catch (error) {
+      const uncertain = error instanceof ProviderFailure && error.acceptanceUncertain;
+      view.calendar = { status: uncertain ? 'uncertain' : 'failed', draftId: request.draftId,
+        error: { code: error instanceof ProviderFailure ? error.code : 'CALENDAR_FAILED', message: 'The calendar invitation was not confirmed. Retry only this exact confirmed action to reconcile an uncertain outcome.' } };
+      if (!uncertain) record.calendarRequest = undefined;
+      if (view.state !== 'cancelled') this.bump(record, 'showroom_calendar_failed');
     }
   }
 
@@ -544,8 +568,10 @@ export class ShowroomService {
     view.visitor = null; view.consent = null; view.context = null; view.captureSet = null;
     view.pendingAction = null; view.acceptedStudio = null; view.selection = null;
     view.motionGrant = null;
+    if (view.calendar.status === 'draft') view.calendar = { status: 'idle' };
     view.state = 'cancelled';
   }
 
-  async settled(): Promise<void> { await Promise.all([...this.records.values()].map(record => record.work)); }
+  forget(sessionId: string): void { this.records.delete(sessionId); }
+  async settled(): Promise<void> { await Promise.all(this.activeWork); }
 }
