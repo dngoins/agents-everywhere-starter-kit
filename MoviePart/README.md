@@ -12,6 +12,28 @@ Tiya's reference-led movie studio and showroom kiosk for MagicPitch. The creator
 
 The kiosk never calls the media service or receives a model/provider/service credential. A tablet on another device requires agreed authenticated LAN hosting, exact allowed origins, and trusted HTTPS for browser capture. These local URLs are not remotely deployed services.
 
+### The robot's face
+
+The showroom kiosk opens with a large smiling robot, rather than the form controls.
+After operator pairing, **Let's begin** offers a short local-voice permission
+prompt, then opens the existing unchecked permission controls. **Continue without
+voice** opens the same controls immediately. Spoken prompts never grant consent,
+capture a photo, start a render, or acknowledge video playback.
+
+**Hear this message** opts into device-local English speech when the browser
+provides it. The mouth moves on actual speech start/end events; it is a
+speech-state animation, not phoneme-level lip sync. **Stop voice / Mute voice**,
+captions, a face-motion pause control, and the system's reduced-motion preference
+are supported. Speech stops on session changes, hidden/offscreen presentation,
+and when the video player replaces the face. Without a suitable local voice,
+the app shows a clear notice and the text-only path remains available.
+
+This is demo narration, not Damian's live robot audio connection. It does not
+activate a microphone or call a paid voice provider. The face guides the existing
+permission, preference, brief, reference-photo and media steps. **Show session
+controls** keeps manual controls available throughout. A loaded authorized MP4
+replaces the face, and only actual video playback sends the reveal event.
+
 The kiosk's photo control uses the tablet/browser's file or camera picker after consent; it does not continuously activate the camera or microphone. This UI sends `media_revealed` only after the video fires actual playback. Damian must not separately acknowledge the same presentation before it plays.
 
 ## The workflow

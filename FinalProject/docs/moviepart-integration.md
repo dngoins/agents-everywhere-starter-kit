@@ -64,9 +64,23 @@ device token. With a real robot, join its existing session through the trusted
 bridge instead; creating a separate session does not attach the robot.
 
 Save explicit personalization/capture permissions, choose a synthetic roster
-entry, confirm a preference, and upload the provided
+entry, and confirm a preference. Create the brief, then upload the provided
 `FinalProject\fixtures\media\sample.png` for an offline demonstration. Review the
-brief, start media once, play the returned MP4 and end the session.
+brief, start media once, load and play the returned MP4 and end the session.
+
+The kiosk now leads with the robot's smiling face. After pairing, **Let's begin**
+speaks a permission invitation using an available local browser voice, then opens
+the permission controls. **Continue without voice** is equally available; all
+permissions remain unchecked until the participant selects and saves them.
+**Hear this message** enables subsequent stage narration, while **Stop voice /
+Mute voice** disables it. No microphone or paid voice API is used.
+
+Mouth movement follows speech start/end, not a fake always-talking loop. Hidden
+tabs, offscreen presentation, cancellation and video handoff stop narration.
+Reduced motion and the face-motion pause control suppress the animated loops.
+If the browser has no device-local English voice, captions and manual controls
+continue to work. This narration is separate from Damian's future live audio
+handoff; it does not make the robot-to-session integration complete.
 
 The tablet owns `media_revealed` and acknowledges actual playback. Downloaded
 media is authorized using the session capability and verified against its
