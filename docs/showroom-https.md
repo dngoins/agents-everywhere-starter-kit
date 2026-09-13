@@ -49,6 +49,8 @@ else's process. All services bind to `127.0.0.1`.
 
 The studio readiness check requires configured OpenAI models, Google Veo,
 FFmpeg, a ready authorized vehicle reference pack, and a worker heartbeat.
+The API readiness check also requires its reported showroom mode, voice,
+calendar and bridge flags to match the selected launcher options.
 Provider readiness means configured, not that model access, quota or a paid
 generation has been exercised. Two minutes is a soft film target, not a timeout
 that converts unfinished work into success.
@@ -175,7 +177,7 @@ Every path below is relative to `/api/showroom`:
 | GET | `/v1/sessions/{id}/showroom` | None |
 | GET | `/v1/sessions/{id}/showroom/catalog` | None |
 | POST | `/v1/sessions/{id}/showroom/actions` | JSON revision-checked discriminated action |
-| POST, DELETE | `/v1/sessions/{id}/showroom/voice` | POST uses real `{sdp,generation?}` JSON; DELETE terminates |
+| POST, DELETE | `/v1/sessions/{id}/showroom/voice` | POST uses real `{sdp,generation?}` JSON; DELETE uses `{generation}` JSON |
 | POST | `/v1/sessions/{id}/showroom/references` | Raw PNG/JPEG; `expectedRevision=N&eventId=UUID` required |
 | DELETE | `/v1/sessions/{id}/showroom/references/{assetId}` | Same two required query fields |
 | POST | `/v1/sessions/{id}/assets` | Legacy raw PNG/JPEG only, not showroom multi-photo capture |
