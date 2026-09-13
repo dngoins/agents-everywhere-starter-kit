@@ -61,5 +61,26 @@ test("successful empty deletion resolves without attempting JSON parsing", async
       return new Response(null, { status: 204 });
     },
   });
+
   await assert.doesNotReject(client.deleteJob("completed"));
+});
+
+test("retry client targets the original job and preserves the attempt receipt after a lost acknowledgement", async () => {
+  const bodies: unknown[] = [];
+  let calls = 0;
+  const client = new MovieMagicClient({
+    baseUrl: "http://localhost:3200",
+    fetch: async (url, init) => {
+      assert.equal(String(url), "http://localhost:3200/api/movie-jobs/original/retry");
+      assert.equal(init?.method, "POST");
+      bodies.push(init?.body);
+      if (++calls === 1) throw new TypeError("Lost acknowledgement");
+      return Response.json({ job_id: "original", status: "RECEIVED", status_url: "/api/movie-jobs/original", retry_attempt: 1 }, { status: 202 });
+    },
+  });
+  const request = { idempotency_key: "retry-request-key", expected_attempt: 0 };
+  await assert.rejects(client.retryJob("original", request), /Lost acknowledgement/);
+  assert.equal((await client.retryJob("original", request)).retry_attempt, 1);
+  assert.equal(bodies[0], bodies[1]);
+  assert.equal(calls, 2);
 });

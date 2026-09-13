@@ -132,3 +132,40 @@ Consent must be obtained from the person before transmitting images. Do not conv
 - Deleting a terminal job is explicit: `DELETE /api/movie-jobs/{jobId}`. Active jobs cannot be deleted; unshared private artifacts are cleaned up with terminal jobs.
 
 Full source-level fields and nullability are in `contracts.ts`. The endpoint implementation reuses these public response interfaces; runtime request validation stays on the Movie Magic server.
+
+## Retry failed or missing studio shots
+
+This is a **creator-studio** feature, not a change to Dwight's media-service protocol.
+
+`GET /api/movie-jobs/{jobId}` includes `job.retry` with `attempt`, `eligible`, `approvedShots`, and `remainingShots`. A failed job with a saved director plan/reference can be retried using:
+
+```http
+POST /api/movie-jobs/{jobId}/retry
+Content-Type: application/json
+
+{
+  "idempotency_key": "unique-retry-action-key",
+  "expected_attempt": 0
+}
+```
+
+Use the latest `job.retry.attempt` as `expected_attempt`. A successful response is HTTP 202 with `job_id`, `status`, `status_url`, and `retry_attempt`. The ID is unchanged. Resume polling that ID even if the UI had stopped polling its previous failed state.
+
+```typescript
+const job = await movie.getJob(jobId);
+if (job.retry?.eligible) {
+  // Only run following an explicit user decision; this may incur new API charges.
+  const retry = {
+    idempotency_key: crypto.randomUUID(),
+    expected_attempt: job.retry.attempt,
+  };
+  const accepted = await movie.retryJob(job.id, retry);
+  const recovered = await movie.waitForJob(accepted.job_id);
+}
+```
+
+Persist/reuse the **same request** after a lost acknowledgement. It returns the same accepted retry even if that attempt later fails; another generation requires a fresh key and the new attempt counter after another explicit decision. A changed payload with the same key or a stale counter returns 409.
+
+Requests are owner-authorized and may not supply replacement plans, frames, references, prompts, or product settings. The existing plan and passed images are immutable recovery inputs. Missing/corrupt approved artifacts, missing original consent, and absent worker/rendering prerequisites fail preflight without scheduling paid work.
+
+The worker skips approved shots, includes the latest rejection reasons in each failed shot's first retry prompt, and runs the remaining shots in order. Each explicit retry gets the bounded two-submission-per-unfinished-shot budget; it never resets that budget automatically. Previous errors/events/candidates remain saved. The response's final result stays unavailable until every required shot is approved and rendering completes. Partial storyboard images remain inspectable as incomplete evidence only.

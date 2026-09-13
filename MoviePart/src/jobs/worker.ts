@@ -3,7 +3,7 @@ import type { GenerationContext, MovieConfig } from "../domain/services";
 import { LocalMediaRepository } from "../server/media";
 import { JobStore, terminal, WORKER_HEARTBEAT_MS } from "./store";
 
-type Checkpoint = (patch: Partial<Pick<MovieJob, "character" | "plan" | "hero">>) => Promise<void>;
+type Checkpoint = (patch: Partial<Pick<MovieJob, "character" | "plan" | "hero" | "heroAttempted">>) => Promise<void>;
 export type MovieExecutor = (job: MovieJob, context: GenerationContext, checkpoint: Checkpoint, config: MovieConfig) => Promise<RenderResult>;
 
 export class MovieWorker {

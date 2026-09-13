@@ -7,6 +7,8 @@ import { providerFailure, rethrowCancellation, type OpenAITransport } from "../p
 import { storyboardImageOptions } from "../providers/openai/image-options";
 import { loadOriginals, readImage } from "../references";
 import { assertFrameInput, compileFramePrompt, type FrameInput } from "./compile";
+import { selectStoryboardFrames } from "../domain/storyboard-state";
+import { validateApprovedFrame } from "../jobs/retry";
 
 export async function normalizeFrame(bytes: Uint8Array): Promise<Buffer> {
   try {
@@ -26,6 +28,7 @@ export async function generateApprovedFrame(
   input: FrameInput,
   context: GenerationContext,
   supplementalAssetId?: string,
+  initialCorrections: string[] = [],
 ): Promise<StoryboardFrame> {
   assertFrameInput(input);
   const shotId = input.endpoint === "end" ? `${input.shot.id}_end` : input.shot.id;
@@ -35,7 +38,7 @@ export async function generateApprovedFrame(
     ? [...originals, await readImage(supplementalAssetId, "supplement", "Approved shot start; composition only", context)]
     : originals;
   const image = await Promise.all(references.map((reference, index) => toFile(reference.bytes, `reference-${index + 1}.${reference.mime.split("/")[1]}`, { type: reference.mime })));
-  let correction: string[] = [];
+  let correction = [...initialCorrections];
   for (let attempt = 0; attempt < 2; attempt++) {
     context.signal.throwIfAborted();
     await context.report({ stage: "STORYBOARDING", provider: "OpenAI", shotId, message: `Generating reference-conditioned ${input.endpoint === "end" ? "hero end" : "storyboard"} frame (attempt ${attempt + 1}/2).` });
@@ -87,7 +90,7 @@ export async function generateApprovedFrame(
     await context.saveFrame(frame);
     if (frame.continuity.verdict === "PASS") return frame;
     if (frame.continuity.verdict === "REJECT" || attempt === 1) {
-      throw new MovieError("CONTINUITY_REJECTED", `Visual continuity was not approved for ${shotId}. Generated evidence was retained; no more than two image submissions were made.`, 422);
+      throw new MovieError("CONTINUITY_REJECTED", `Visual continuity was not approved for ${shotId}. Generated evidence was retained; no more than two image submissions were made in this attempt.`, 422);
     }
     correction = frame.continuity.reasons;
   }
@@ -98,9 +101,22 @@ export function createStoryboardService(config: MovieConfig, transport: OpenAITr
   return {
     async generate(input, context) {
       if (!moviePlanSchema.safeParse(input.plan).success) throw new MovieError("INVALID_PLAN", "A complete timeline-matched plan is required before image generation.", 400);
+      const saved = selectStoryboardFrames(input.existingFrames ?? [], input.plan.shots.map(shot => shot.id));
+      // Reject a missing saved approval before spending on any later shot.
+      for (const frame of saved.filter(frame => frame.continuity.verdict === "PASS")) {
+        await validateApprovedFrame(frame, context);
+      }
       const frames: StoryboardFrame[] = [];
       for (const shot of input.plan.shots) {
-        frames.push(await generateApprovedFrame(config, transport, { ...input, shot }, context));
+        const prior = saved.find(frame => frame.shotId === shot.id);
+        if (prior?.continuity.verdict === "PASS") {
+          frames.push(prior);
+          await context.report({ stage: "STORYBOARDING", shotId: shot.id, message: "Reusing this approved storyboard frame; no generation or review charge." });
+          continue;
+        }
+        frames.push(await generateApprovedFrame(
+          config, transport, { ...input, shot }, context, undefined, prior?.continuity.reasons ?? [],
+        ));
       }
       return frames;
     },

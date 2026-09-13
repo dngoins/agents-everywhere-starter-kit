@@ -214,9 +214,34 @@ stateDiagram-v2
     ASSEMBLING --> FAILED
     COMPLETED --> [*]
     FAILED --> [*]
+    FAILED --> RECEIVED: Explicit owner-authorized retry with saved plan
 ```
 
 This diagram uses **studio** status names. The media-service wire protocol uses `queued`, `running`, `ready`, and `failed`, with finer progress stages; it must not return a studio status to Dwight.
+
+### Explicit studio recovery
+
+`POST /api/movie-jobs/{jobId}/retry` atomically requeues an eligible failed job with its original ID and a durable retry receipt. The request contains an idempotency key and the expected retry counter. Duplicate delivery returns the existing receipt; a stale counter cannot trigger another paid attempt.
+
+```mermaid
+flowchart LR
+    Failed["Failed movie<br/>Plan and frame history retained"]
+    Action["Explicit retry decision<br/>Same job and immutable inputs"]
+    Preflight["Validate ownership, consent,<br/>saved files and worker readiness"]
+    Saved["Reuse approved shots<br/>No new provider calls"]
+    Retry["Retry failed shot<br/>Latest review corrections"]
+    Remaining["Generate missing shots<br/>Bounded review per shot"]
+    Gate{"Every planned shot approved?"}
+    Assemble["Assemble and validate final MP4"]
+    Incomplete["Keep incomplete storyboard<br/>Await another explicit decision"]
+
+    Failed --> Action --> Preflight
+    Preflight --> Saved --> Retry --> Remaining --> Gate
+    Gate -->|"Yes"| Assemble
+    Gate -->|"No"| Incomplete
+```
+
+The worker reuses saved character analysis and the director plan. Every new approval is checkpointed before progressing, so a second failure still preserves prior work. A previously attempted optional hero video is not resubmitted merely because final assembly is being retried. Missing approved media blocks the retry rather than silently regenerating it. This recovery endpoint is separate from the media service's cancellation and tombstone protocol.
 
 ```mermaid
 sequenceDiagram

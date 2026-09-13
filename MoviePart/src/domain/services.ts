@@ -48,7 +48,7 @@ export interface DirectorService {
   }, context: GenerationContext): Promise<MoviePlan>;
 }
 export interface StoryboardService {
-  generate(input: { plan: MoviePlan; character: CharacterReference; product: ProductReference }, context: GenerationContext): Promise<StoryboardFrame[]>;
+  generate(input: { plan: MoviePlan; character: CharacterReference; product: ProductReference; existingFrames?: StoryboardFrame[] }, context: GenerationContext): Promise<StoryboardFrame[]>;
 }
 export interface VideoService {
   generate(input: {

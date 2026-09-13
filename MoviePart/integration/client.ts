@@ -1,6 +1,6 @@
 import type {
   ConfigView, Consent, JobResponse, JobView, MovieJobAccepted,
-  MovieJobRequest, UploadResponse,
+  MovieJobRequest, MovieRetryAccepted, MovieRetryRequest, UploadResponse,
 } from "./contracts";
 
 export class MovieMagicHttpError extends Error {
@@ -73,6 +73,13 @@ export class MovieMagicClient {
 
   async getJob(jobId: string, signal?: AbortSignal): Promise<JobView> {
     return (await this.json<JobResponse>(`/api/movie-jobs/${encodeURIComponent(jobId)}`, { signal })).job;
+  }
+
+  retryJob(jobId: string, request: MovieRetryRequest, signal?: AbortSignal): Promise<MovieRetryAccepted> {
+    return this.json(`/api/movie-jobs/${encodeURIComponent(jobId)}/retry`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request), signal,
+    });
   }
 
   async waitForJob(jobId: string, options: {

@@ -206,6 +206,22 @@ export interface JobEvent {
   shotId: string | null;
 }
 
+export interface MovieRetryRequest {
+  /** Reuse this key and expected_attempt when retrying an uncertain HTTP response. */
+  idempotency_key: string;
+  /** Number of retries already accepted, from JobView.retry.attempt. */
+  expected_attempt: number;
+}
+export interface MovieRetryAccepted extends MovieJobAccepted {
+  retry_attempt: number;
+}
+export interface MovieRetrySummary {
+  attempt: number;
+  eligible: boolean;
+  approvedShots: number;
+  remainingShots: number;
+}
+
 export interface JobView {
   id: string;
   sessionId: string;
@@ -221,6 +237,8 @@ export interface JobView {
   hero: VideoArtifact | null;
   /** Available only after the output file was successfully rendered and probed. */
   result: RenderResult | null;
+  /** Explicit recovery uses the saved plan and approved assets, never edited form inputs. */
+  retry?: MovieRetrySummary;
 }
 
 export interface JobResponse { job: JobView }

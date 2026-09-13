@@ -245,6 +245,18 @@ export const jobStatusSchema = z.enum([
   "VALIDATING", "GENERATING_HERO", "ASSEMBLING", "COMPLETED", "FAILED",
 ]);
 export type JobStatus = z.infer<typeof jobStatusSchema>;
+export const jobErrorSchema = z.object({ code: z.string(), message: z.string(), stage: jobStatusSchema }).strict();
+export const retryRequestSchema = z.object({
+  idempotency_key: z.string().min(8).max(120),
+  expected_attempt: z.number().int().min(0).max(1_000_000),
+}).strict();
+export type RetryRequest = z.infer<typeof retryRequestSchema>;
+export const retryRecordSchema = z.object({
+  idempotencyKey: z.string(),
+  expectedAttempt: z.number().int().nonnegative(),
+  requestedAt: z.iso.datetime(),
+  previousError: jobErrorSchema.nullable(),
+}).strict();
 export const jobEventSchema = z.object({
   at: z.iso.datetime(),
   stage: jobStatusSchema,
@@ -263,13 +275,15 @@ export const jobSchema = z.object({
   updatedAt: z.iso.datetime(),
   events: z.array(jobEventSchema),
   warnings: z.array(z.string()),
-  error: z.object({ code: z.string(), message: z.string(), stage: jobStatusSchema }).nullable(),
+  error: jobErrorSchema.nullable(),
   character: characterSchema.nullable(),
   plan: moviePlanSchema.nullable(),
   frames: z.array(storyboardFrameSchema),
   hero: videoArtifactSchema.nullable(),
+  heroAttempted: z.boolean().optional(),
   result: renderResultSchema.nullable(),
   operations: z.array(z.object({ provider: z.string(), id: z.string() })),
+  retries: z.array(retryRecordSchema).optional(),
 }).strict();
 export type MovieJob = z.infer<typeof jobSchema>;
 

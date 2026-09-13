@@ -23,7 +23,7 @@ before(async () => {
   await mkdir(root, { recursive: true });
   await generateSample(sample);
 });
-after(async () => { await rm(root, { recursive: true, force: true }); });
+after(async () => { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
 function request(): MediaSubmitRequest {
   const value = structuredClone(examples.mediaSubmission) as MediaSubmitRequest;

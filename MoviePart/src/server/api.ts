@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { z } from "zod";
-import { consentSchema, jobRequestSchema, MovieError, type AssetRecord, type MovieJob } from "../domain";
+import { consentSchema, jobRequestSchema, retryRequestSchema, MovieError, type AssetRecord, type MovieJob } from "../domain";
 import type { AssetView, ConfigView, JobView, Readiness } from "../domain/http";
 import type { MovieConfig } from "../domain/services";
 import { JobStore } from "../jobs/store";
@@ -13,6 +13,7 @@ import { loadConfig } from "./config";
 import { LocalMediaRepository } from "./media";
 import { boundedBody, uploadPhotos } from "./uploads";
 import { uploadProductReferences } from "./product-upload";
+import { retrySummary, validateRetryAssets } from "../jobs/retry";
 
 const privateHeaders = {
   "cache-control": "private, no-store",
@@ -37,10 +38,13 @@ export function assetView(asset: AssetRecord): AssetView {
 }
 
 export function jobView(job: MovieJob): JobView {
+  const retry = retrySummary(job);
   return {
     id: job.id, sessionId: job.request.session_id, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt,
     events: job.events, warnings: job.warnings, error: job.error, character: job.character, plan: job.plan,
-    frames: job.frames, hero: job.hero, result: job.result,
+    frames: job.frames, hero: job.hero,
+    result: job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
+    retry,
   };
 }
 
@@ -156,6 +160,43 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
     getJob: guarded(async (request, id: string) => {
       const { ownerId } = await auth.authenticate(request);
       return json({ job: jobView(await store.getOwned(id, ownerId)) });
+    }),
+    retryJob: guarded(async (request, id: string) => {
+      const { ownerId } = await auth.authenticate(request, { mutation: true });
+      if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+        throw new MovieError("INVALID_CONTENT_TYPE", "Send the retry request as application/json.", 415);
+      }
+      const bytes = await boundedBody(request, 4096);
+      let parsed: unknown;
+      try { parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch {
+        throw new MovieError("INVALID_JSON", "The retry request must be valid JSON.", 400);
+      }
+      const input = retryRequestSchema.parse(parsed);
+      const previous = await store.findRetry(id, ownerId, input);
+      if (previous) return json({
+        job_id: previous.job.id, status: previous.job.status,
+        status_url: `/api/movie-jobs/${id}`, retry_attempt: previous.attempt,
+      }, 202);
+      const result = await store.retryOwned(id, ownerId, input, async job => {
+        const summary = retrySummary(job);
+        if (summary.remainingShots && !(config.openaiKey && config.visionModel && config.imageModel)) {
+          throw new MovieError("OPENAI_NOT_READY", "Configure OpenAI image generation and vision review before retrying unfinished shots.", 503);
+        }
+        const [renderer, worker] = await Promise.all([rendererReady(), store.workerReadiness()]);
+        if (!renderer.available) throw new MovieError("RENDERER_NOT_READY", renderer.message, 503);
+        if (!worker.available) throw new MovieError("WORKER_NOT_READY", worker.message, 503);
+        for (const assetId of job.request.customer_reference_asset_ids) {
+          await media.requireOwned(assetId, ownerId);
+          if (!consentSchema.safeParse(await media.getConsent(assetId)).success) {
+            throw new MovieError("CONSENT_REQUIRED", "The original customer image consent is not available.", 409);
+          }
+        }
+        await validateRetryAssets(job, media);
+      });
+      return json({
+        job_id: result.job.id, status: result.job.status,
+        status_url: `/api/movie-jobs/${id}`, retry_attempt: result.attempt,
+      }, 202);
     }),
     deleteJob: guarded(async (request, id: string) => {
       const { ownerId } = await auth.authenticate(request, { mutation: true });

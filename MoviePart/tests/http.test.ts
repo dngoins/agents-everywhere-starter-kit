@@ -23,7 +23,7 @@ function req(route: string, options: { cookie?: string; method?: string; body?: 
 async function fixture(t: TestContext, includeCatalog = true) {
   const directory = path.resolve(".movie-data", "tests", `http-${randomUUID()}`);
   await mkdir(directory, { recursive: true });
-  t.after(() => rm(directory, { recursive: true, force: true }));
+  t.after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const config: MovieConfig = {
     dataDir: directory, imageModel: "test-image", veoModel: "test-veo",
     openaiKey: "test-openai", visionModel: "test-vision", directorModel: "test-director", apiToken: "private-machine-token",

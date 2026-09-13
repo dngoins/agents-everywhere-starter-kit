@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { jobSchema, MovieError, type JobRequest, type MovieJob, type ProductReference } from "../domain";
+import { jobSchema, retryRequestSchema, MovieError, type JobRequest, type MovieJob, type ProductReference, type RetryRequest } from "../domain";
 import type { Readiness } from "../domain/http";
 import { atomicWrite, isMissing, processAlive, readJson, withDiskLock } from "../server/files";
 import type { LocalMediaRepository } from "../server/media";
+import { retrySummary, validateSavedPlan } from "./retry";
 
 export const WORKER_HEARTBEAT_MS = 3_000;
 export const WORKER_STALE_MS = 15_000;
@@ -101,6 +102,58 @@ export class JobStore {
       }));
       await atomicWrite(this.queue(job.id, "pending"), JSON.stringify({ jobId: job.id }));
       return job;
+    });
+  }
+
+  async findRetry(id: string, ownerId: string, request: RetryRequest): Promise<{ job: MovieJob; attempt: number } | null> {
+    const job = await this.getOwned(id, ownerId);
+    const index = job.retries?.findIndex(retry => retry.idempotencyKey === request.idempotency_key) ?? -1;
+    if (index < 0) return null;
+    if (job.retries![index].expectedAttempt !== request.expected_attempt) {
+      throw new MovieError("IDEMPOTENCY_CONFLICT", "This retry key was used with a different attempt. Reuse the original retry request.", 409);
+    }
+    return { job, attempt: index + 1 };
+  }
+
+  async retryOwned(
+    id: string, ownerId: string, input: RetryRequest, verify: (job: MovieJob) => Promise<void>,
+  ): Promise<{ job: MovieJob; attempt: number }> {
+    const request = retryRequestSchema.parse(input);
+    return this.transaction(async () => {
+      const previous = await this.findRetry(id, ownerId, request);
+      if (previous) return previous;
+      const job = await this.getOwned(id, ownerId);
+      if (request.expected_attempt !== (job.retries?.length ?? 0)) {
+        throw new MovieError("STALE_RETRY", "Another retry was already accepted. Refresh this movie before authorizing another attempt.", 409);
+      }
+      if (!retrySummary(job).eligible) {
+        throw new MovieError("RETRY_UNAVAILABLE", "Only a failed movie with a saved plan and references can be retried. Active and completed movies cannot be restarted.", 409);
+      }
+      const claimed = await stat(this.queue(id, "claimed")).catch(error => {
+        if (isMissing(error)) return null;
+        throw error;
+      });
+      if (claimed) throw new MovieError("JOB_ACTIVE", "The previous worker is still finishing. Wait briefly and retry the same request.", 409);
+      validateSavedPlan(job);
+      await verify(job);
+      const at = new Date().toISOString();
+      job.retries = [...(job.retries ?? []), {
+        idempotencyKey: request.idempotency_key, expectedAttempt: request.expected_attempt,
+        requestedAt: at, previousError: job.error,
+      }];
+      job.status = "RECEIVED";
+      job.updatedAt = at;
+      job.error = null;
+      job.result = null;
+      job.events.push({
+        at, stage: "RECEIVED", provider: null, shotId: null,
+        message: "Explicit retry accepted. Keeping the director plan and approved shots; only unfinished work will run.",
+      });
+      // The manifest includes the receipt and queue intent in one atomic write.
+      // claim/recoverInterrupted repair a missing pending marker after a crash.
+      await this.write(job);
+      await atomicWrite(this.queue(id, "pending"), JSON.stringify({ jobId: id }));
+      return { job, attempt: job.retries.length };
     });
   }
 

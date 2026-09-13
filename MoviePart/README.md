@@ -110,6 +110,18 @@ Open **http://127.0.0.1:3200**. The configuration panel identifies missing setup
 
 The worker runs separately from Next requests and persists stages/artifacts on disk. Refreshing the browser does not resubmit a movie. A worker interruption is surfaced rather than blindly repeating potentially billable operations.
 
+### Recover an incomplete movie
+
+If a shot fails generation or continuity review, the job stops with its director plan, references, approved frames, rejected candidates, and review reasons intact. The storyboard is labeled **incomplete**, not presented as a finished movie.
+
+Use **Retry failed and remaining shots** on that failed job to explicitly authorize more work. This keeps the same job ID, frozen brief, director plan, and approved images. The worker starts at the first unapproved shot, includes its latest review corrections, and continues through the missing shots. It does not rerun reference analysis or direction, and approved shots make no new image-generation or continuity-review requests.
+
+Each click authorizes at most two new image submissions per unfinished shot, including a possible continuity correction. Further failure stops the job again while retaining every approval. New generation/review may incur charges. A repeated HTTP request with the same retry key is deduplicated; two callers cannot authorize the same retry attempt using stale state.
+
+If every shot already passed and assembly failed, the action is **Retry final assembly**. A saved hero clip is reused; an optional hero-video attempt already recorded is not automatically resubmitted. No final MP4 is published until every required storyboard shot is approved and final assembly succeeds.
+
+Retry uses the saved movie settings, not edits in the creation form. Missing or corrupted approved files block recovery instead of silently charging for replacement. Restore those files or explicitly create a new take. Jobs that failed before saving a complete plan need a new take; active and completed jobs cannot be requeued by the retry endpoint.
+
 ### Customer and car references
 
 Use three or four photos of a consenting teammate; one to four are accepted. Select a primary photo to establish wardrobe when outfits differ. Clear front, three-quarter, and full-body views are useful, but unobserved details remain unknown.
@@ -148,6 +160,7 @@ The complete portable contract is [integration/contracts.ts](integration/contrac
 | `POST /api/movie-products/{productId}/references` | Operator-confirmed exterior/interior references for the selected Tesla or Toyota |
 | `POST /api/movie-jobs` | Idempotent asynchronous submission; returns 202 |
 | `GET /api/movie-jobs/{jobId}` | Current status, artifacts, progress, warnings, and errors |
+| `POST /api/movie-jobs/{jobId}/retry` | Explicit, idempotent recovery using the saved plan and approved shots |
 | `GET /api/movie-assets/{assetId}` | Controlled images/video, including byte-range playback |
 | `DELETE /api/movie-jobs/{jobId}` | Explicit terminal-job cleanup |
 

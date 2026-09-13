@@ -8,6 +8,8 @@ import { mainStoryboardFrames } from "../lib/storyboard-view";
 import { MovieMagicClient } from "../../integration/client";
 import { CarReferences } from "../components/car-references";
 import { creationBlockers, selectableProducts } from "../lib/studio-readiness";
+import type { MovieRetryRequest } from "../../integration/contracts";
+import { MovieRecovery } from "../components/movie-recovery";
 
 const stageLabels: Record<JobStatus, string> = {
   RECEIVED: "Queued for the studio",
@@ -62,10 +64,15 @@ export default function MovieStudio() {
   const [showBlockers, setShowBlockers] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<JobView | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+  const [pollRevision, setPollRevision] = useState(0);
+  const retryInFlight = useRef(false);
+  const pendingRetry = useRef<{ jobId: string; request: MovieRetryRequest } | null>(null);
   const pendingRequest = useRef<JobRequest | null>(null);
   const uploading = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const busy = submitting || Boolean(jobId && !terminal(job));
+  const busy = submitting || retrying || Boolean(jobId && !terminal(job));
   const ready = Boolean(config?.providers.openai.available && config.worker.available && config.renderer.available && config.products.some(item => item.id === product && item.ready));
   const products = selectableProducts(config);
   const blockers = creationBlockers({
@@ -116,7 +123,7 @@ export default function MovieStudio() {
     }
     void poll();
     return () => { disposed = true; controller.abort(); if (timer) clearTimeout(timer); };
-  }, [jobId]);
+  }, [jobId, pollRevision]);
 
   function changed() { pendingRequest.current = null; }
 
@@ -183,6 +190,8 @@ export default function MovieStudio() {
       localStorage.setItem("movie-magic:last-job", result.job_id);
       setJob(null);
       setJobId(result.job_id);
+      setRetryError("");
+      pendingRetry.current = null;
       pendingRequest.current = null;
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not submit your movie.");
@@ -192,12 +201,41 @@ export default function MovieStudio() {
     }
   }
 
+  async function retryMovie() {
+    if (!job || !job.retry?.eligible || busy || retryInFlight.current) return;
+    retryInFlight.current = true;
+    setRetrying(true);
+    setRetryError("");
+    const client = new MovieMagicClient({ baseUrl: window.location.origin });
+    if (pendingRetry.current?.jobId !== job.id) {
+      pendingRetry.current = {
+        jobId: job.id, request: { idempotency_key: crypto.randomUUID(), expected_attempt: job.retry.attempt },
+      };
+    }
+    try {
+      await client.retryJob(job.id, pendingRetry.current.request);
+      // Keep the receipt until the authoritative job read succeeds. A lost
+      // response must not authorize a second billable retry.
+      const updated = await client.getJob(job.id);
+      setJob(updated);
+      pendingRetry.current = null;
+    } catch (failure) {
+      setRetryError(failure instanceof Error ? failure.message : "Could not request the retry. The saved plan and shots remain available.");
+    } finally {
+      setRetrying(false);
+      retryInFlight.current = false;
+      setPollRevision(value => value + 1);
+    }
+  }
+
   async function deleteMovie() {
-    if (!job || !terminal(job) || !window.confirm("Delete this movie and its unshared private files? This cannot be undone.")) return;
+    if (!job || busy || !terminal(job) || !window.confirm("Delete this movie and its unshared private files? This cannot be undone.")) return;
     try {
       await new MovieMagicClient({ baseUrl: window.location.origin }).deleteJob(job.id);
       setJob(null);
       setJobId(null);
+      pendingRetry.current = null;
+      setRetryError("");
       localStorage.removeItem("movie-magic:last-job");
       setError("");
     } catch (failure) {
@@ -209,6 +247,8 @@ export default function MovieStudio() {
   const timeline = getTimeline(job?.plan?.storyFormat ?? storyFormat, job?.plan?.templateId ?? template);
   const shotIds = job?.plan?.shots.map(shot => shot.id) ?? timeline.shotIds;
   const storyboardFrames = mainStoryboardFrames(job?.frames ?? [], shotIds);
+  const approvedCount = storyboardFrames.filter(frame => frame.continuity.verdict === "PASS").length;
+  const completeMovie = job?.status === "COMPLETED" && approvedCount === shotIds.length ? job.result : null;
   return <div className="studio">
     <header className="masthead">
       <a href="/" className="wordmark" aria-label="Movie Magic home"><span className="mark">m<span>m</span></span> movie magic<span className="wordmark-dot">.</span></a>
@@ -307,22 +347,25 @@ export default function MovieStudio() {
 
         <section className="screening-room" aria-label="Movie preview and progress">
           <div className="screening-heading"><div><p className="eyebrow">YOUR PRIVATE SCREENING ROOM</p><h2>{job ? stageLabels[job.status] : "The story starts here."}</h2></div><span className="ratio-tag">16:9 / HD</span></div>
-          <div className={`cinema-screen ${job?.result ? "has-video" : ""}`}>
-            {job?.result ? <video key={job.result.assetId} controls preload="metadata" src={mediaUrl(job.result.assetId)} aria-label="Your completed personalized movie" /> : <div className="screen-empty">
+          <div className={`cinema-screen ${completeMovie ? "has-video" : ""}`}>
+            {completeMovie ? <video key={completeMovie.assetId} controls preload="metadata" src={mediaUrl(completeMovie.assetId)} aria-label="Your completed personalized movie" /> : <div className="screen-empty">
               <div className="screen-guide corner-tl" /><div className="screen-guide corner-tr" /><div className="screen-guide corner-bl" /><div className="screen-guide corner-br" />
-              <span className="screen-kicker">{job ? "IN THE MAKING" : "CAST YOURSELF"}</span>
+              <span className="screen-kicker">{job?.status === "FAILED" ? "INCOMPLETE STORYBOARD" : job ? "IN THE MAKING" : "CAST YOURSELF"}</span>
               <div className="screen-title">{job ? (job.plan?.logline || stageLabels[job.status]) : <>A familiar face.<br />An entirely new <em>perspective.</em></>}</div>
-              <span className="screen-caption">{job ? `${storyboardFrames.filter(frame => frame.continuity.verdict === "PASS").length} of ${shotIds.length} storyboard frames approved` : `${selectedTemplate.name.toUpperCase()} · AN ORIGINAL MOVIE MAGIC FILM`}</span>
+              <span className="screen-caption">{job ? `${approvedCount} of ${shotIds.length} storyboard frames approved` : `${selectedTemplate.name.toUpperCase()} · AN ORIGINAL MOVIE MAGIC FILM`}</span>
               <span className="screen-bottom">REFERENCE-LED. PERSONALLY DIRECTED.</span>
             </div>}
           </div>
-          {job?.result && <div className="result-bar"><span><i />{job.result.mode === "hybrid-video" ? "Hybrid film · one Veo hero shot" : "Storyboard-motion film"} · {job.result.durationSeconds.toFixed(1)}s{!job.result.hasAudio ? " · No audio" : ""}</span><a href={mediaUrl(job.result.assetId)} download="my-movie.mp4">Download film ↗</a></div>}
+          {completeMovie && <div className="result-bar"><span><i />{completeMovie.mode === "hybrid-video" ? "Hybrid film · one Veo hero shot" : "Storyboard-motion film"} · {completeMovie.durationSeconds.toFixed(1)}s{!completeMovie.hasAudio ? " · No audio" : ""}</span><a href={mediaUrl(completeMovie.assetId)} download="my-movie.mp4">Download film ↗</a></div>}
 
           {error && <div className="notice error" role="alert"><strong>Something needs your attention</strong><p>{error}</p>{jobId && !job && <button className="text-button" onClick={() => { setJobId(null); localStorage.removeItem("movie-magic:last-job"); }}>Stop watching this job</button>}</div>}
-          {job?.error && <div className="notice error" role="alert"><strong>{stageLabels[job.error.stage]}</strong><p>{job.error.message}</p><small>Your completed artifacts remain below. A new take requires a new, explicit submission.</small></div>}
+          {job?.error && <div className="notice error" role="alert"><strong>{stageLabels[job.error.stage]}</strong><p>{job.error.message}</p><small>Your saved plan and artifacts remain below. {job.retry?.eligible ? "Retry this movie to keep approved work, or create a new take to change its brief." : "A new take requires an explicit submission."}</small></div>}
+          {job && <MovieRecovery job={job} retrying={retrying} disabled={busy} onRetry={() => void retryMovie()} />}
+          {retryError && <div className="notice error" role="alert"><strong>Retry needs attention</strong><p>{retryError}</p><p>Retrying this request uses the same key; it does not automatically authorize a second attempt.</p><button className="text-button" onClick={() => { pendingRetry.current = null; setRetryError(""); setPollRevision(value => value + 1); }}>Refresh movie before a new retry decision</button></div>}
           {!!job?.warnings.length && <div className="notice"><strong>Production notes</strong>{job.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
 
           <div className="storyboard-heading"><h3>The storyboard <span>{String(storyboardFrames.length).padStart(2, "0")} / {String(shotIds.length).padStart(2, "0")}</span></h3><span className="small-muted">CONSISTENT REFERENCES. ONE STORY.</span></div>
+          {job?.plan && !completeMovie && <p className="incomplete-label">{approvedCount < shotIds.length ? `Incomplete storyboard preview — ${approvedCount} of ${shotIds.length} shots approved. This is not a finished movie.` : "All storyboard shots are approved. Final movie assembly has not completed."}</p>}
           <div className={`storyboard-grid ${shotIds.length === 6 ? "six-shots" : ""}`}>{shotIds.map((shotId, index) => {
             const frame = storyboardFrames.find(item => item.shotId === shotId);
             const shot = job?.plan?.shots[index];
@@ -330,7 +373,8 @@ export default function MovieStudio() {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={mediaUrl(frame.assetId)} alt={shot?.action || `Storyboard shot ${index + 1}`} /> : <FrameIcon />}
               <span className="frame-number">0{index + 1}</span></div><div className="frame-detail"><span>{(shotIds.length === 6 ? ["ORDINARY MOMENT", "THE SPARK", "CROSSING OVER", "THE IMPOSSIBLE", "MASTERY", "THE PAYOFF"] : ["THE BEGINNING", "THE CONNECTION", "THE JOURNEY", "THE ARRIVAL"])[index]}</span><small>{shot?.durationSeconds ?? timeline.durations[index]} SEC</small></div>
-              {shot && <p>{shot.purpose}</p>}{frame && <span className={`review-badge ${frame.continuity.verdict === "PASS" ? "" : "review-warning"}`}>{frame.continuity.verdict === "PASS" ? "Continuity reviewed" : "Needs revision"}</span>}
+              {shot && <p>{shot.purpose}</p>}{frame ? <span className={`review-badge ${frame.continuity.verdict === "PASS" ? "" : "review-warning"}`}>{frame.continuity.verdict === "PASS" ? "Approved — kept on retry" : "Needs revision"}</span> : job?.plan && <span className="review-badge review-warning">Not generated</span>}
+              {frame && frame.continuity.verdict !== "PASS" && <details className="frame-corrections"><summary>Review corrections</summary><ul>{frame.continuity.reasons.map((reason, at) => <li key={at}>{reason}</li>)}</ul></details>}
             </article>;
           })}</div>
 
@@ -338,7 +382,7 @@ export default function MovieStudio() {
 
           {job?.character && <details className="artifact-details"><summary>Inspect reference notes &amp; director plan</summary><p>Visual notes supplement your original photos. They are not identity verification.</p><pre>{JSON.stringify({ character: job.character.attributes, plan: job.plan }, null, 2)}</pre></details>}
           {job?.hero && <details className="artifact-details"><summary>Preview the generated hero shot</summary><video controls preload="none" src={mediaUrl(job.hero.assetId)} /></details>}
-          {terminal(job) && <button className="text-button delete-button" onClick={() => void deleteMovie()}>Delete this movie &amp; unshared private files</button>}
+          {terminal(job) && <button className="text-button delete-button" disabled={busy} onClick={() => void deleteMovie()}>Delete this movie &amp; unshared private files</button>}
 
           <details className="setup-details" open={config ? !ready : true}><summary>Studio setup <span>{ready ? "Ready for production" : "Configuration required"}</span></summary>
             <div className="readiness-grid">{[

@@ -43,7 +43,7 @@ export async function readImage(
   assetId: string,
   kind: LoadedReference["kind"],
   role: string,
-  context: GenerationContext,
+  context: Pick<GenerationContext, "ownerId" | "media" | "signal">,
 ): Promise<LoadedReference> {
   context.signal.throwIfAborted();
   const asset = await context.media.getAsset(assetId);
