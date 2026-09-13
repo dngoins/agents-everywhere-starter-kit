@@ -25,6 +25,7 @@
     "test:moviepart": "node --import ./scripts/offline-network-guard.mjs --import tsx --test integration-tests/moviepart.test.mjs"
   },
   "dependencies": {
+    "@magicpitch/showroom-runtime": "file:../packages/showroom-runtime",
     "@hono/node-server": "1.19.17",
     "ffprobe-static": "^3.1.0",
     "hono": "4.13.7",
