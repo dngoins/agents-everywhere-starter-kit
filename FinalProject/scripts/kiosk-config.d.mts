@@ -12,6 +12,7 @@ export interface KioskLaunchOptions {
 export function optionalEnvironment(path: string): Promise<Record<string, string>>;
 export function launchOptions(args: string[]): KioskLaunchOptions;
 export function studioReady(value: unknown): boolean;
+export function apiReady(value: unknown, options: KioskLaunchOptions): boolean;
 export function integrationEnvironments(input: {
   parent?: NodeJS.ProcessEnv;
   finalEnv?: Record<string, string>;

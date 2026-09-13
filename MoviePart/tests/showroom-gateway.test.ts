@@ -43,10 +43,16 @@ test("voice uses the real SDP exchange unchanged and supports explicit teardown"
     },
   });
   assert.equal((await response.json()).transport.sdp, "answer");
-  const closed = await showroomGateway(request(`${snapshot}/voice`, { method: "DELETE" }), {
-    ...options, fetch: async () => new Response(null, { status: 204 }),
+  const closed = await showroomGateway(request(`${snapshot}/voice`, {
+    method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ generation: 1 }),
+  }), {
+    ...options, fetch: async (_url, init) => {
+      assert.equal(Buffer.from(init.body as Uint8Array).toString(), '{"generation":1}');
+      return new Response(null, { status: 204 });
+    },
   });
   assert.equal(closed.status, 204);
+  assert.equal((await showroomGateway(request(`${snapshot}/voice`, { method: "DELETE" }), options)).status, 415);
 });
 
 test("voice permits canonical SDP above the ordinary JSON cap but bounds its encoded envelope", async () => {

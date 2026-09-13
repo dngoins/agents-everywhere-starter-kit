@@ -192,7 +192,7 @@ export async function showroomGateway(request: Request, options: ShowroomGateway
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     cleanup = () => { clearTimeout(timer); request.signal.removeEventListener("abort", abort); };
     let body: Uint8Array | undefined;
-    if (route.body && request.method !== "DELETE") {
+    if (route.body) {
       const contentType = request.headers.get("content-type") ?? "";
       const mime = contentType.split(";")[0].trim().toLowerCase();
       if (!(route.body === "json" ? mime === "application/json" : ["image/png", "image/jpeg"].includes(mime))) {

@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { integrationEnvironments, launchOptions, optionalEnvironment, studioReady } from "./kiosk-config.mjs";
+import { integrationEnvironments, launchOptions, optionalEnvironment, studioReady, apiReady } from "./kiosk-config.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const movieRoot = resolve(root, "..", "MoviePart");
@@ -137,8 +137,7 @@ try {
   start("MagicPitch API", ["dist/server.js"], root, env.api);
   await waitFor(`${env.apiOrigin}/readyz`, async (response) => {
     if (!response.ok) return false;
-    const value = await response.json();
-    return value.providers?.media === (options.liveMedia ? "http" : "mock");
+    return apiReady(await response.json(), options);
   });
   if (!options.liveStudio) {
     start("MoviePart kiosk", ["node_modules/next/dist/bin/next", "dev", "-H", "127.0.0.1", "-p", String(options.uiPort)], movieRoot, env.ui);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 // Launcher configuration is deliberately independent from either application's runtime.
-const { integrationEnvironments, launchOptions, studioReady } = await import("../scripts/kiosk-config.mjs");
+const { integrationEnvironments, launchOptions, studioReady, apiReady } = await import("../scripts/kiosk-config.mjs");
 
 test("kiosk launcher defaults to distinct loopback ports and validates overrides", () => {
   assert.deepEqual(launchOptions([]), {
@@ -188,4 +188,23 @@ test("explicit live voice reuses only allowlisted RobotPart configuration with F
   const offline = integrationEnvironments({ ...input, options: launchOptions([]) });
   assert.equal(offline.api.OPENAI_API_KEY, "");
   assert.equal(offline.api.VOICE_MODEL, "gpt-live-1");
+});
+
+test("API readiness checks every selected showroom capability, not just legacy media", () => {
+  const fixture = {
+    status: "ready", providers: { media: "mock" },
+    showroom: { mode: "fixture", voice: { enabled: false }, calendar: { provider: "disabled" }, bridge: { enabled: false } },
+  };
+  assert.equal(apiReady(fixture, launchOptions([])), true);
+  assert.equal(apiReady({ status: "ready", providers: { media: "mock" } }, launchOptions([])), false);
+  assert.equal(apiReady(fixture, launchOptions(["--live-voice"])), false);
+  assert.equal(apiReady(fixture, launchOptions(["--google-calendar"])), false);
+  assert.equal(apiReady(fixture, launchOptions(["--windows-bridge"])), false);
+  assert.equal(apiReady(fixture, launchOptions(["--live-studio"])), false);
+  assert.equal(apiReady(fixture, launchOptions(["--live-media"])), false);
+  assert.equal(apiReady(null, launchOptions([])), false);
+  assert.equal(apiReady({
+    ...fixture,
+    showroom: { mode: "studio", voice: { enabled: true }, calendar: { provider: "google" }, bridge: { enabled: true } },
+  }, launchOptions(["--live-studio", "--live-voice", "--google-calendar", "--windows-bridge"])), true);
 });
