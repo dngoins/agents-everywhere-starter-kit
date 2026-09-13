@@ -18,9 +18,9 @@
     "smoke": "node scripts/smoke.mjs",
     "verify": "npm run typecheck && npm test && npm run interfaces:check && npm run build && npm run smoke",
     "package:demo": "node scripts/package.mjs",
-    "interfaces:export": "node --import tsx scripts/export-interfaces.mjs",
-    "interfaces:check": "node --import tsx scripts/export-interfaces.mjs --check",
-    "interfaces:package": "node --import tsx scripts/export-interfaces.mjs --check --archive",
+    "interfaces:export": "node --import tsx scripts/export-interfaces.mjs && node --import tsx scripts/export-interfaces.mjs --showroom",
+    "interfaces:check": "node --import tsx scripts/export-interfaces.mjs --check && node --import tsx scripts/export-interfaces.mjs --showroom --check",
+    "interfaces:package": "node --import tsx scripts/export-interfaces.mjs --check --archive && node --import tsx scripts/export-interfaces.mjs --showroom --check --archive",
     "dev:kiosk": "node scripts/dev-kiosk.mjs",
     "test:moviepart": "node --import ./scripts/offline-network-guard.mjs --import tsx --test integration-tests/moviepart.test.mjs"
   },

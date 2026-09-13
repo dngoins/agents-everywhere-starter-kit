@@ -9,13 +9,21 @@ import { z } from "zod";
 import * as core from "../src/contracts/index.ts";
 import * as media from "../src/contracts/media.ts";
 import * as transport from "../src/contracts/transport.ts";
+import * as showroom from "../src/contracts/showroom.ts";
+import * as bridge from "../src/contracts/bridge.ts";
+import { createShowroomInterfaceData } from "./showroom-interface-data.mjs";
 import { createMockBriefProvider } from "../src/providers/mock.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const output = resolve(root, "interfaces", "v1");
+const showroomMode = process.argv.includes("--showroom");
+const versionDirectory = showroomMode ? "showroom-v1" : "v1";
+const output = resolve(root, "interfaces", versionDirectory);
 const check = process.argv.includes("--check");
 const packageArchive = process.argv.includes("--archive");
-const sourcePaths = [
+const sourcePaths = showroomMode ? [
+  "src/contracts/showroom-common.ts", "src/contracts/studio.ts",
+  "src/contracts/bridge.ts", "src/contracts/showroom.ts",
+] : [
   "src/contracts/index.ts", "src/contracts/media.ts",
   "src/contracts/transport.ts", "src/providers/interfaces.ts",
 ];
@@ -45,7 +53,7 @@ for (const path of sourcePaths) {
     typeDeclarations.push(`export type ${statement.name.text} = ${rendered};`);
   }
 }
-const types = "// Generated from the executable MagicPitch v1 contracts. Do not edit.\n" +
+const types = `// Generated from the executable MagicPitch ${versionDirectory} contracts. Do not edit.\n` +
   "// Type-only, dependency-free: safe to copy into a TypeScript client.\n\n" +
   typeDeclarations.join("\n\n") + "\n";
 const schemas = {};
@@ -58,15 +66,20 @@ function rebaseReferences(value, name) {
   }
   return value;
 }
-for (const [name, schema] of Object.entries({ ...core, ...media, ...transport }).sort(([a], [b]) => a.localeCompare(b))) {
+const schemaRegistry = showroomMode
+  ? { ...showroom, ...bridge, ApiErrorResponseSchema: transport.ApiErrorResponseSchema }
+  : { ...core, ...media, ...transport };
+for (const [name, schema] of Object.entries(schemaRegistry).sort(([a], [b]) => a.localeCompare(b))) {
   if (name.endsWith("Schema") && schema instanceof z.ZodType) {
     schemas[name] = rebaseReferences(z.toJSONSchema(schema, { target: "draft-2020-12" }), name);
   }
 }
 const schemaBundle = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  title: "MagicPitch v1 contract definitions",
-  description: "Select a definition under $defs. Runtime consent, state, idempotency, URL policies and scene-duration sum invariants also apply.",
+  title: `MagicPitch ${versionDirectory} contract definitions`,
+  description: showroomMode
+    ? "Select a definition under $defs. Runtime refinements, ownership, consent, approval, concurrency, time and physical-safety rules also apply."
+    : "Select a definition under $defs. Runtime consent, state, idempotency, URL policies and scene-duration sum invariants also apply.",
   $defs: schemas,
 };
 function validateLocalReferences(value, document) {
@@ -225,7 +238,14 @@ const examples = {
   mediaReady: media.MediaServiceStatusSchema.parse({ status: "ready", result: { assetPath: "assets/render-123.mp4", mimeType: "video/mp4", durationSeconds: 6 } }),
   reveal: core.SessionEventSchema.parse({ schemaVersion: 1, eventId: "55555555-5555-4555-8555-555555555555", type: "media_revealed", payload: { jobId: ids.job } }),
 };
-const artifacts = {
+const showroomData = showroomMode ? createShowroomInterfaceData(schemaRegistry) : null;
+const artifacts = showroomMode ? {
+  "types.d.ts": types,
+  "contracts.schema.json": JSON.stringify(schemaBundle, null, 2) + "\n",
+  "showroom.openapi.json": JSON.stringify(showroomData.openapi, null, 2) + "\n",
+  "examples.json": JSON.stringify(showroomData.examples, null, 2) + "\n",
+  "README.md": normalizeText(await readFile(resolve(root, "docs", "showroom-contracts.md"), "utf8")),
+} : {
   "types.d.ts": types,
   "contracts.schema.json": JSON.stringify(schemaBundle, null, 2) + "\n",
   "orchestrator.openapi.json": JSON.stringify(openapi, null, 2) + "\n",
@@ -235,15 +255,18 @@ const artifacts = {
 const sourceHashes = {};
 for (const path of sourcePaths) sourceHashes[path] = createHash("sha256").update(normalizeText(await readFile(resolve(root, path), "utf8"))).digest("hex");
 artifacts["manifest.json"] = JSON.stringify({
-  contractVersion: 1, sourceHashNormalization: "LF", sourceHashes,
+  contractVersion: 1, ...(showroomMode ? { mode: "studio" } : {}), sourceHashNormalization: "LF", sourceHashes,
   generatedFiles: Object.fromEntries(Object.entries(artifacts).map(([path, content]) => [path, createHash("sha256").update(content).digest("hex")])),
-  runtimeRules: ["Consent and ownership", "State transitions", "Idempotency and queue/deadline bounds", "Scene durations sum to total", "Media service idempotency key equals the globally unique job ID", "Public-profile URL policy", "Provider output validation"],
+  runtimeRules: showroomMode ? showroomData.runtimeRules : ["Consent and ownership", "State transitions", "Idempotency and queue/deadline bounds", "Scene durations sum to total", "Media service idempotency key equals the globally unique job ID", "Public-profile URL policy", "Provider output validation"],
 }, null, 2) + "\n";
-await mkdir(output, { recursive: true });
-for (const [file, content] of Object.entries(artifacts)) {
-  const path = resolve(output, file);
-  if (check) assert.equal(normalizeText(await readFile(path, "utf8")), content, `Stale handoff: ${file}; run npm run interfaces:export`);
-  else await writeFile(path, content);
+const destinations = [output, ...(showroomMode ? [resolve(root, "..", "MoviePart", "integration", "dwight", versionDirectory)] : [])];
+for (const destination of destinations) {
+  await mkdir(destination, { recursive: true });
+  for (const [file, content] of Object.entries(artifacts)) {
+    const path = resolve(destination, file);
+    if (check) assert.equal(normalizeText(await readFile(path, "utf8")), content, `Stale handoff: ${relative(root, path)}; run npm run interfaces:export`);
+    else await writeFile(path, content);
+  }
 }
 const portableProgram = ts.createProgram([resolve(output, "types.d.ts")], {
   strict: true, noEmit: true, types: [], target: ts.ScriptTarget.ES2023, skipLibCheck: false,
@@ -252,9 +275,9 @@ const portableDiagnostics = ts.getPreEmitDiagnostics(portableProgram);
 assert.equal(portableDiagnostics.length, 0, "Generated types must compile without Zod/server imports: " +
   portableDiagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")).join("\n"));
 if (packageArchive) {
-  const allowed = [...Object.keys(artifacts), "README.md", "DAMIAN.md", "TIYA.md"].sort();
+  const allowed = [...Object.keys(artifacts), ...(showroomMode ? [] : ["README.md", "DAMIAN.md", "TIYA.md"])].sort();
   assert.deepEqual((await readdir(output)).sort(), allowed, "Unexpected files in the handoff directory.");
-  const archivePath = resolve(root, "artifacts", "magicpitch-interfaces-v1.tgz");
+  const archivePath = resolve(root, "artifacts", `magicpitch-interfaces-${versionDirectory}.tgz`);
   await mkdir(resolve(root, "artifacts"), { recursive: true });
   const result = spawnSync("tar", ["-czf", archivePath, "-C", output, ...allowed], { encoding: "utf8", shell: false, windowsHide: true });
   if (result.error || result.status !== 0) throw new Error("Cannot create interface archive; OS tar is required.");
