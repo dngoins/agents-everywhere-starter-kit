@@ -4,6 +4,7 @@ import { moviePlanSchema, MovieError, type StoryboardFrame } from "../domain";
 import type { GenerationContext, MovieConfig, StoryboardService } from "../domain/services";
 import { inspectContinuity } from "../continuity";
 import { providerFailure, rethrowCancellation, type OpenAITransport } from "../providers/openai/client";
+import { storyboardImageOptions } from "../providers/openai/image-options";
 import { loadOriginals, readImage } from "../references";
 import { assertFrameInput, compileFramePrompt, type FrameInput } from "./compile";
 
@@ -42,7 +43,7 @@ export async function generateApprovedFrame(
     try {
       const response = await transport.edit({
         model, prompt: compileFramePrompt(input, references, correction), image, n: 1,
-        size: "1536x864", quality: "high", input_fidelity: "high", output_format: "png",
+        ...storyboardImageOptions(model),
       }, { signal: context.signal, maxRetries: 0, timeout: 180_000 });
       if (response._request_id) await context.recordOperation("OpenAI Images", response._request_id);
       encoded = response.data?.[0]?.b64_json;
@@ -78,6 +79,9 @@ export async function generateApprovedFrame(
       rethrowCancellation(error, context.signal);
       frame.continuity = { verdict: "REJECT", reasons: ["Continuity review could not be completed."], confidence: 0 };
       await context.saveFrame(frame);
+      if (error instanceof MovieError) {
+        throw new MovieError(error.code, `The ${shotId} image was retained, but its continuity review failed. ${error.message}`, error.httpStatus);
+      }
       throw new MovieError("CONTINUITY_UNAVAILABLE", `The ${shotId} image was retained, but its continuity review failed.`, 502);
     }
     await context.saveFrame(frame);
