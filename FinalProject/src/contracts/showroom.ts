@@ -9,7 +9,9 @@ import {
   AcceptedStudioSnapshotSchema, ApprovedContextSchema, CaptureSetSchema,
   StudioInputSchema, StudioProductIdSchema, StudioSelectionSchema, StudioStatusSchema,
 } from './studio.js';
-import { BridgeStatusSchema, MotionIntentSchema, StopIntentSchema } from './bridge.js';
+import {
+  BridgeStatusSchema, MotionApprovalSchema, MotionExecutionRequestSchema, MotionGrantSchema, StopIntentSchema,
+} from './bridge.js';
 
 export * from './showroom-common.js';
 export * from './studio.js';
@@ -75,7 +77,7 @@ export const PendingActionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...pendingBase, kind: z.literal('consent'), payload: ShowroomConsentInputSchema }),
   z.strictObject({ ...pendingBase, kind: z.literal('studio'), payload: StudioInputSchema }),
   z.strictObject({ ...pendingBase, kind: z.literal('calendar'), payload: CalendarDraftSchema }),
-  z.strictObject({ ...pendingBase, kind: z.literal('motion'), payload: MotionIntentSchema }),
+  z.strictObject({ ...pendingBase, kind: z.literal('motion'), payload: MotionApprovalSchema }),
 ]);
 export const PlaybackEventSchema = z.strictObject({
   jobId: z.uuid(),
@@ -91,7 +93,8 @@ export const ShowroomActionSchema = z.discriminatedUnion('type', [
   ShowroomMutationSchema.extend({ type: z.literal('playback_started'), payload: PlaybackEventSchema }),
   ShowroomMutationSchema.extend({ type: z.literal('playback_ended'), payload: PlaybackEventSchema }),
   ShowroomMutationSchema.extend({ type: z.literal('calendar_draft_proposed'), payload: CalendarDraftProposalSchema }),
-  ShowroomMutationSchema.extend({ type: z.literal('motion_requested'), payload: MotionIntentSchema }),
+  ShowroomMutationSchema.extend({ type: z.literal('motion_requested'), payload: MotionApprovalSchema }),
+  ShowroomMutationSchema.extend({ type: z.literal('motion_execution_requested'), payload: MotionExecutionRequestSchema }),
   ShowroomMutationSchema.extend({ type: z.literal('stop_requested'), payload: StopIntentSchema }),
 ]);
 export const CalendarStatusSchema = z.discriminatedUnion('status', [
@@ -110,7 +113,7 @@ export const PlaybackStatusSchema = z.discriminatedUnion('status', [
 ]);
 export const ShowroomSnapshotSchema = z.strictObject({
   schemaVersion: z.literal(1),
-  mode: z.literal('studio'),
+  mode: z.enum(['studio', 'fixture']),
   sessionId: z.uuid(),
   serverInstanceId: z.uuid(),
   revision: ShowroomRevisionSchema,
@@ -128,22 +131,37 @@ export const ShowroomSnapshotSchema = z.strictObject({
   playback: PlaybackStatusSchema,
   calendar: CalendarStatusSchema,
   bridge: BridgeStatusSchema.nullable(),
+  motionGrant: MotionGrantSchema.nullable(),
   acknowledgement: z.strictObject({ eventId: z.uuid(), revision: ShowroomRevisionSchema }).optional(),
 });
 export const ShowroomCatalogSchema = z.strictObject({
+  mode: z.enum(['studio', 'fixture']),
   products: z.array(z.strictObject({ id: StudioProductIdSchema, name: z.string().min(1).max(200), ready: z.boolean() })).max(100),
   templates: z.array(z.strictObject({ id: StudioSelectionSchema.unwrap().shape.templateId, name: z.string().min(1).max(200) })).max(20),
   videoProviders: z.array(z.strictObject({ id: StudioSelectionSchema.unwrap().shape.videoProvider.unwrap(), available: z.boolean() })).max(10),
   workerAvailable: z.boolean(),
   rendererAvailable: z.boolean(),
 });
-export const ShowroomVoiceSetupInputSchema = z.strictObject({});
+export const ShowroomReferenceUploadQuerySchema = z.strictObject({
+  expectedRevision: ShowroomRevisionSchema,
+  eventId: z.uuid(),
+});
+export const ShowroomReferenceUploadedSchema = z.strictObject({
+  assetId: z.uuid(),
+  snapshot: ShowroomSnapshotSchema,
+});
+export const ShowroomSdpSchema = z.string().min(1).max(128 * 1024)
+  .refine((value) => new TextEncoder().encode(value).byteLength <= 128 * 1024 && /^v=0(?:\r?\n|$)/.test(value),
+    'Invalid SDP offer or answer.');
+export const ShowroomVoiceSetupInputSchema = z.strictObject({
+  sdp: ShowroomSdpSchema,
+  generation: ShowroomRevisionSchema.optional(),
+});
 export const ShowroomVoiceSetupSchema = z.strictObject({
-  mode: z.literal('openai-realtime'),
-  clientSecret: z.string().min(1).max(4096),
-  expiresAt: ShowroomTimestampSchema,
-  model: z.string().min(1).max(100),
-  voice: z.string().min(1).max(100),
+  sessionId: z.uuid(),
+  generation: ShowroomRevisionSchema,
+  session: z.strictObject({ id: z.string().min(1).max(512) }),
+  transport: z.strictObject({ type: z.literal('webrtc'), sdp: ShowroomSdpSchema }),
 });
 
 export type KioskPairing = z.infer<typeof KioskPairingSchema>;
@@ -159,6 +177,9 @@ export type ShowroomAction = z.infer<typeof ShowroomActionSchema>;
 export type CalendarStatus = z.infer<typeof CalendarStatusSchema>;
 export type ShowroomSnapshot = z.infer<typeof ShowroomSnapshotSchema>;
 export type ShowroomCatalog = z.infer<typeof ShowroomCatalogSchema>;
+export type ShowroomReferenceUploadQuery = z.infer<typeof ShowroomReferenceUploadQuerySchema>;
+export type ShowroomReferenceUploaded = z.infer<typeof ShowroomReferenceUploadedSchema>;
+export type ShowroomVoiceSetupInput = z.infer<typeof ShowroomVoiceSetupInputSchema>;
 export type ShowroomVoiceSetup = z.infer<typeof ShowroomVoiceSetupSchema>;
 
 export function assertPendingConfirmation(
