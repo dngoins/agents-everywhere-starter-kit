@@ -14,6 +14,8 @@ import { LocalMediaRepository } from "./media";
 import { boundedBody, uploadPhotos } from "./uploads";
 import { uploadProductReferences } from "./product-upload";
 import { retrySummary, validateApprovedFrame, validateRetryAssets } from "../jobs/retry";
+import { lifecycleKeySchema } from "../jobs/lifecycle";
+import { UploadBatchStore } from "./upload-batches";
 
 const privateHeaders = {
   "cache-control": "private, no-store",
@@ -52,10 +54,10 @@ export function jobView(job: MovieJob): JobView {
       ? { movieDurationSeconds: job.request.movie_duration_seconds ?? 15 } : {}),
     videoClips: job.videoSegments?.filter(segment => segment.clip).sort((a, b) => a.index - b.index).flatMap(segment => segment.clip ? [segment.clip] : [])
       ?? (job.hero ? [job.hero] : []),
-    result: !requiredVideoPresent ? null : movieFirst ? job.result : job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
+    result: job.error?.code === "JOB_CANCELLED" || !requiredVideoPresent ? null : movieFirst ? job.result : job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
     retry,
     reviewRevision: job.designerDecisions?.length ?? 0,
-    designerReviewAllowed: !!job.plan && !job.result && (job.status === "FAILED" || !job.storyboardLocked && ["STORYBOARDING", "VALIDATING"].includes(job.status)),
+    designerReviewAllowed: job.error?.code !== "JOB_CANCELLED" && !!job.plan && !job.result && (job.status === "FAILED" || !job.storyboardLocked && ["STORYBOARDING", "VALIDATING"].includes(job.status)),
   };
 }
 
@@ -92,6 +94,7 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
   const store = dependencies.store ?? new JobStore(config.dataDir);
   const catalog = dependencies.catalog ?? new ProductCatalog(config.dataDir, media);
   const auth = new SessionAuth(config);
+  const batches = new UploadBatchStore(store, media);
   const rendererReady = dependencies.rendererReady ?? (async () => (await import("../render")).createRenderer(config).ready());
   const guarded = <A extends unknown[]>(handle: (request: Request, ...args: A) => Promise<Response>) =>
     async (request: Request, ...args: A): Promise<Response> => {
@@ -149,7 +152,41 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
     }),
     upload: guarded(async request => {
       const { ownerId } = await auth.authenticate(request, { mutation: true });
+      const key = request.headers.get("idempotency-key");
+      if (key !== null) {
+        const receipt = await batches.upload(request, ownerId, key);
+        return json({ assets: await Promise.all(receipt.assetIds.map(async id => assetView(await media.requireOwned(id, ownerId)))), receipt }, 201);
+      }
       return json({ assets: (await uploadPhotos(request, ownerId, media)).map(assetView) }, 201);
+    }),
+    getUploadBatch: guarded(async (request, key: string) => {
+      const { ownerId } = await auth.authenticate(request);
+      const receipt = await batches.get(ownerId, key);
+      if (!receipt) throw new MovieError("UPLOAD_NOT_FOUND", "Upload batch not found.", 404);
+      return json({ receipt, assets: receipt.state === "uploaded"
+        ? await Promise.all(receipt.assetIds.map(async id => assetView(await media.requireOwned(id, ownerId)))) : [] });
+    }),
+    deleteUploadBatch: guarded(async (request, key: string) => {
+      const { ownerId } = await auth.authenticate(request, { mutation: true });
+      const receipt = await batches.cancel(ownerId, key);
+      return json({ receipt }, receipt.assetsDeleted ? 200 : 202);
+    }),
+    getJobRequest: guarded(async (request, key: string) => {
+      const { ownerId } = await auth.authenticate(request);
+      const receipt = await store.receipt(ownerId, lifecycleKeySchema.parse(key));
+      if (!receipt) throw new MovieError("JOB_NOT_FOUND", "Movie request not found.", 404);
+      return json({ receipt });
+    }),
+    cancelJobRequest: guarded(async (request, key: string) => {
+      const { ownerId } = await auth.authenticate(request, { mutation: true });
+      const receipt = await store.cancelOwnedRequest(ownerId, lifecycleKeySchema.parse(key), media);
+      return json({ receipt }, receipt.assetsDeleted ? 200 : 202);
+    }),
+    cancelJob: guarded(async (request, id: string) => {
+      const { ownerId } = await auth.authenticate(request, { mutation: true });
+      const job = await store.getOwned(id, ownerId);
+      const receipt = await store.cancelOwnedRequest(ownerId, job.request.idempotency_key, media);
+      return json({ receipt }, receipt.assetsDeleted ? 200 : 202);
     }),
     uploadProduct: guarded(async (request, productId: string) => {
       await auth.authenticate(request, { mutation: true });

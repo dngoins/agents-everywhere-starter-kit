@@ -72,9 +72,21 @@ Tests use injected transports, media and fixtures, never a real camera, paid
 provider or hardware. Actual iPad/Safari permissions, voice and supervised
 hardware still require operator acceptance on the target devices.
 
-## The workflow
+The full studio API supports private orchestrator sessions without changing the creator UI or the separate dedicated media-service contract. Send `Authorization: Bearer MOVIE_API_TOKEN` and `x-movie-session-id` on **every** upload, job, receipt and asset request. The scope must contain 1-128 ASCII letters, digits, `_` or `-`; it partitions the machine principal. Browser cookies cannot select that scope. Keep the token server-side and use the existing loopback-only API.
 
-Worker heartbeat and lost-lease failures are reported as errors and exit nonzero, while intentional `SIGINT`/`SIGTERM` shutdowns are logged separately. A stopped worker never automatically resubmits paid operations; saved plans, approvals and generated assets remain available for explicit recovery.
+| Operation | Route | Result |
+|---|---|---|
+| Upload 1-4 originals | `POST /api/movie-assets`, multipart `photos` and JSON `consent`, plus `Idempotency-Key` | Existing `assets` plus durable `receipt` |
+| Reconcile upload | `GET /api/movie-upload-batches/{key}` | `{receipt, assets}`; assets are populated only for a completed upload |
+| Reclaim upload | `DELETE /api/movie-upload-batches/{key}` | Cancelled batch receipt; 202 while references are still in use, 200 after deletion |
+| Submit full studio request | `POST /api/movie-jobs` | Unchanged canonical `JobRequest` and acceptance |
+| Reconcile submission | `GET /api/movie-job-requests/{idempotency_key}` | `{receipt: {jobId, fingerprint, cancelledAt?, assetsDeleted?}}` |
+| Cancel before or after submission | `DELETE /api/movie-job-requests/{idempotency_key}` | Durable tombstone even when no job exists yet; 202 pending, 200 settled |
+| Cancel known job | `POST /api/movie-jobs/{jobId}/cancel` | Same cancellation receipt |
+
+Receipt keys use the same bounded identifier alphabet as session scopes. Upload fingerprints bind normalized ordered photo bytes and consent; job fingerprints bind the complete canonical request. Reuse the original key and exact input to reconcile a lost response; never invent a replacement key after an uncertain paid submission. Cancelled keys cannot be reused, including after restart or an explicit retry/designer decision.
+
+Upload receipts allocate IDs before any photo is saved, allowing partial/orphaned batch cleanup. Delete the job by key first, then its upload batch. Retry a pending or failed cleanup with the same keys. Cancellation is observed by the separate worker process and reaches existing provider calls and the owned encoder through its abort signal. `assetsDeleted: true` is not published until local worker execution and artifact writes have settled and all owned job copies are removed. It does not assert deletion from a model provider's retention systems or cancellation of an already accepted remote billing operation. Other jobs' references and shared catalog assets are never deleted. Ordinary terminal-job deletion retains its existing creator workflow.
 
 The studio defaults to **reviewed storyboards with required Google Veo animation**. Astra handles vision/direction, Flare creates the reference stills, and Veo creates one to three eight-second moving clips after approval. Pan/zoom animation of a photograph does not satisfy the animation requirement.
 
