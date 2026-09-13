@@ -186,7 +186,7 @@ The studio now offers **Tesla Model Y** and **Toyota Tundra Hybrid** separately.
 
 The npm dependencies provide local `ffmpeg-static` and `ffprobe-static` binaries. No machine-wide install is required on supported platforms. To use your own binaries, set `FFMPEG_PATH` and `FFPROBE_PATH` to absolute paths.
 
-Optional `MOVIE_MUSIC_PATH` points to a local music file you have permission to use. Without it, the movie remains playable but has no audio, and the UI/manifest reports that explicitly. An audio cue in the director plan is not a generated sound effect.
+Hybrid movies preserve the generated hero clip's native audio, synchronized to its shot (starting at 6 seconds for four-shot stories, or 8/9 seconds for six-shot stories). Short audio is padded with silence, not looped; still-image shots have no generated soundtrack. Optional `MOVIE_MUSIC_PATH` points to a local music file you have permission to use and is mixed underneath native audio across the full movie. Only movies with neither source are silent, and the UI/manifest reports that explicitly. An audio cue in the director plan is not a generated sound effect.
 
 ### Google Veo animation
 

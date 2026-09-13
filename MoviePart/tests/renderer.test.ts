@@ -151,7 +151,8 @@ test("six-shot arguments derive durations, concat inputs, music index and fade f
     const filter = args[args.indexOf("-filter_complex") + 1];
     assert.ok(filter.startsWith("[0:v:0][1:v:0][2:v:0][3:v:0][4:v:0][5:v:0]concat=n=6:v=1:a=0[v]"));
     assert.ok(filter.includes(`[6:a:0]aresample=48000,atrim=duration=${expectedDuration}`));
-    assert.ok(filter.includes(`afade=t=out:st=${expectedDuration - 2}:d=2[a]`));
+    assert.ok(filter.includes(`afade=t=out:st=${expectedDuration - 2}:d=2[music]`));
+    assert.ok(filter.includes("[music]anull[a]"));
     assert.equal(args[args.indexOf("-frames:v") + 1], String(expectedDuration * 24));
     assert.equal(args[args.indexOf("-t") + 1], String(expectedDuration));
     const hero = buildHeroArguments(source, output, timeline);
@@ -425,6 +426,16 @@ test("real local renderer produces exact baseline and hybrid MP4s and cleans onl
       const path = sample.paths.get(result.assetId)!;
       assert.equal(validateRenderedMedia(await probeMedia(ffprobe.path, path, undefined, true), true), 18);
       await assertFastStart(path);
+      await assertClean();
+    });
+
+    await t.test("hybrid preserves native hero audio without a music bed", async () => {
+      const warningsBefore = sample.warnings.length;
+      const result = await createRenderer(config).render(sample.input, sample.context);
+      assert.equal(result.mode, "hybrid-video");
+      assert.equal(result.hasAudio, true);
+      assert.equal(sample.warnings.length, warningsBefore);
+      assert.equal(validateRenderedMedia(await probeMedia(ffprobe.path, sample.paths.get(result.assetId)!, undefined, true), true), 18);
       await assertClean();
     });
 

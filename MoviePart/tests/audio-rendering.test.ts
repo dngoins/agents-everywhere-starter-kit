@@ -12,11 +12,13 @@ import { runMediaCommand } from "../src/render/process";
 import { probeMedia, validateRenderedMedia } from "../src/render/probe";
 
 test("native hero audio is placed at its timeline offset and can mix with music without shell interpolation", () => {
-  for (const format of ["four-shot", "six-shot"] as const) {
-    const timeline = getTimeline(format, "DREAM_ROUTE");
+  for (const [timeline, expected] of [
+    [getTimeline("four-shot", "DREAM_ROUTE"), 6000],
+    [getTimeline("six-shot", "DREAM_ROUTE"), 8000],
+    [getTimeline("six-shot", "HERO_OF_THE_DAY"), 9000],
+  ] as const) {
     const hero = "C:\\Private Clips\\hero & native audio.mp4";
     const shots = timeline.shotIds.map(id => `C:\\Private Clips\\${id}.mp4`);
-    const expected = format === "four-shot" ? 6000 : 8000;
     for (const music of [undefined, "C:\\Private Clips\\music.wav"]) {
       const args = buildAssemblyArguments(shots, "C:\\Private Clips\\output.mp4", music, timeline, hero);
       const filter = args[args.indexOf("-filter_complex") + 1];
