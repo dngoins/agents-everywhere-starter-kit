@@ -6,6 +6,8 @@ import type { FormEvent } from "react";
 import type { SessionCreated } from "../../../integration/dwight/types";
 import { DEFAULT_ORCHESTRATOR_URL } from "../../../integration/orchestrator-client";
 import { currentJob, KioskController, provenanceLabel } from "../../kiosk/controller";
+import { robotPrompt } from "../../kiosk/robot-guide";
+import { RobotFace } from "../../components/robot-face";
 import styles from "./kiosk.module.css";
 
 export default function KioskPage() {
@@ -18,6 +20,7 @@ export default function KioskPage() {
   const [bridge, setBridge] = useState<SessionCreated>({ sessionId: "", sessionToken: "", serverInstanceId: "" });
   const [preferences, setPreferences] = useState("");
   const setup = useRef<HTMLDetailsElement>(null);
+  const sessionControls = useRef<HTMLDetailsElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const snapshot = state.snapshot;
   const job = currentJob(snapshot);
@@ -32,6 +35,7 @@ export default function KioskPage() {
   const jobStopped = job && ["failed", "cancelled", "expired"].includes(job.status);
   const contextRevision = snapshot?.context?.revision;
   const currentBrief = !!brief && brief.contextRevision === contextRevision;
+  const prompt = robotPrompt(state);
 
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => { setPreferences(""); }, [state.generation]);
@@ -50,12 +54,36 @@ export default function KioskPage() {
     };
   }, [state.movieUrl]);
 
+  useEffect(() => {
+    if (state.movieUrl) document.getElementById("robot-stage")?.scrollIntoView({ block: "start", behavior: "auto" });
+  }, [state.movieUrl]);
+
   function openSetup() {
     if (setup.current) {
       setup.current.open = true;
       setup.current.scrollIntoView({ block: "nearest", behavior: "auto" });
       setup.current.querySelector<HTMLInputElement>("input")?.focus();
     }
+  }
+
+  function openControls(target = "participant-controls") {
+    if (sessionControls.current) sessionControls.current.open = true;
+    requestAnimationFrame(() => {
+      const section = document.getElementById(target);
+      section?.scrollIntoView({ block: "start", behavior: "auto" });
+      section?.focus({ preventScroll: true });
+    });
+  }
+
+  function robotAction() {
+    if (prompt.action === "connect") { openSetup(); return; }
+    if (prompt.action === "load") { void controller.loadMovie(); return; }
+    const target = prompt.action === "permissions" ? "robot-permissions"
+      : prompt.action === "preferences" ? "robot-preferences"
+      : prompt.action === "photo" ? "robot-photo"
+      : prompt.action === "brief" || prompt.action === "create" ? "brief-heading"
+      : "participant-controls";
+    openControls(target);
   }
 
   async function connect(event: FormEvent) {
@@ -89,7 +117,7 @@ export default function KioskPage() {
 
   return (
     <main className={styles.kiosk}>
-      <a className={styles.skipLink} href="#participant-controls">Skip to participant controls</a>
+      <button className={styles.skipLink} onClick={() => openControls()}>Skip to participant controls</button>
       <header className={styles.header}>
         <Link className={styles.wordmark} href="/" aria-label="Movie Magic creator studio">
           <span className={styles.mark} aria-hidden="true">m</span> Movie Magic<span aria-hidden="true">.</span>
@@ -171,14 +199,38 @@ export default function KioskPage() {
         </section>
       )}
 
+      <div id="robot-stage">
+        <RobotFace prompt={prompt} sessionKey={`${state.generation}:${snapshot?.sessionId ?? ""}`}
+          disabled={!!state.busy || (paired && !active)}
+          onAction={robotAction} onControls={() => openControls()}>
+          {state.movieUrl && (
+            <>
+              {ready && <p className={styles.provenance}>{provenanceLabel(job.result!.provenance)}</p>}
+              <video ref={video} src={state.movieUrl} controls playsInline preload="metadata"
+                aria-label="Authorized showroom concept movie" onPlaying={() => controller.onPlaying()} onError={() => controller.playbackError()} />
+            </>
+          )}
+        </RobotFace>
+        {state.movieUrl && <div className={styles.playbackNote} aria-live="polite">
+          <span>{state.reveal === "acknowledged" ? "Playback confirmed to the orchestrator."
+            : state.reveal === "sending" ? "Confirming actual playback…"
+            : state.reveal === "failed" ? "Playback acknowledgement needs a retry."
+            : "Press play. Reveal is acknowledged only when playback starts."}</span>
+          {job?.result && <span>{job.result.durationSeconds} seconds · MP4</span>}
+        </div>}
+      </div>
+
+      <details ref={sessionControls} className={styles.sessionControls}>
+        <summary>Permissions, preferences & movie controls</summary>
+        <p className={styles.help}>The robot will guide you here when needed. You can review or change permissions at any time. Spoken prompts never grant permission.</p>
       <div className={styles.workspace}>
-        <aside className={styles.controls} id="participant-controls" aria-label="Participant controls">
+        <aside className={styles.controls} id="participant-controls" tabIndex={-1} aria-label="Participant controls">
           <section className={styles.participant}>
             <h2>{snapshot?.customer ? `For ${snapshot.customer.displayName}` : "You’re in control"}</h2>
             <p>{snapshot?.customer ? "Synthetic customer profile · selected by the orchestrator" : "Nothing is captured until you give permission."}</p>
           </section>
 
-          <section className={styles.controlSection}>
+          <section className={styles.controlSection} id="robot-permissions" tabIndex={-1} aria-label="Your permission">
             <h3><span>1</span> Your permission</h3>
             <p className={styles.help}>Choose what this session may use. Unchecking a media permission stops local capture and playback immediately; save to tell the orchestrator.</p>
             <fieldset disabled={locked}>
@@ -202,7 +254,7 @@ export default function KioskPage() {
               : "No permissions recorded yet."}</p>
           </section>
 
-          <section className={styles.controlSection}>
+          <section className={styles.controlSection} id="robot-preferences" tabIndex={-1} aria-label="Customer and preferences">
             <h3><span>2</span> Customer & preferences</h3>
             <p className={styles.help}>Use the robot’s selection, or select a synthetic demo customer here. No face recognition is performed by this tablet.</p>
             <div className={styles.customerChoices}>
@@ -230,7 +282,7 @@ export default function KioskPage() {
             </div>}
           </section>
 
-          <section className={styles.controlSection}>
+          <section className={styles.controlSection} id="robot-photo" tabIndex={-1} aria-label="Reference photo">
             <h3><span>3</span> Reference photo</h3>
             <p className={styles.help}>{brief ? "Your brief is ready. Take or choose one permitted photo, then upload it." : "Confirm preferences and create the brief on the right before choosing a photo."}
               {" "}This uses the device’s camera/file picker, not a live camera or microphone stream.</p>
@@ -252,34 +304,7 @@ export default function KioskPage() {
             <h2 id="screening-title">{status}</h2>
             <span className={styles.demoLabel}>Synthetic product demo</span>
           </div>
-          {ready && <p className={styles.provenance}>{provenanceLabel(job.result!.provenance)}</p>}
-          <div className={styles.screen}>
-            {state.movieUrl ? (
-              <video ref={video} src={state.movieUrl} controls playsInline preload="metadata"
-                aria-label="Authorized showroom concept movie" onPlaying={() => controller.onPlaying()} onError={() => controller.playbackError()} />
-            ) : (
-              <div className={styles.screenEmpty}>
-                <h3>{!paired ? "A little imagination.\nYour say in every frame." : ready ? "Ready when you are." : jobStopped ? "This movie has stopped." : waiting ? "Making your concept." : "Your choices come first."}</h3>
-                <p>{!paired ? "Ask your showroom guide to connect this tablet to the current session."
-                  : ready ? "Load the authorized MP4. We’ll verify its size and checksum before playback."
-                  : jobStopped ? "No movie is playing. End the session to clear media before trying a new concept."
-                  : waiting ? "You can follow the reported stage below. A result is not promised until it is ready."
-                  : "Give permission, confirm your preferences and review the brief before creating a movie."}</p>
-                {!paired && <button className={styles.screenButton} onClick={openSetup}>Connect this tablet</button>}
-                {ready && <button className={styles.screenButton} disabled={locked || !permitted} onClick={() => void controller.loadMovie()}>
-                  {state.busy === "Verifying the movie" ? "Verifying movie…" : "Load movie"}
-                </button>}
-              </div>
-            )}
-          </div>
-          <div className={styles.playbackNote} aria-live="polite">
-            <span>{state.movieUrl ? state.reveal === "acknowledged" ? "Playback confirmed to the orchestrator."
-              : state.reveal === "sending" ? "Confirming actual playback…"
-              : state.reveal === "failed" ? "Playback acknowledgement needs a retry."
-              : "Press play. Reveal is acknowledged only when playback starts."
-              : "Private playback · session-authorized media only"}</span>
-            {brief && <span>{brief.durationSeconds} seconds · MP4</span>}
-          </div>
+          {ready && !state.movieUrl && <button className={styles.primary} disabled={locked || !permitted} onClick={() => void controller.loadMovie()}>Load movie</button>}
 
           {job && <section className={styles.progress} aria-labelledby="progress-heading">
             <h3 id="progress-heading">Movie progress</h3>
@@ -291,7 +316,7 @@ export default function KioskPage() {
 
           <section className={styles.brief} aria-labelledby="brief-heading">
             <div className={styles.briefHeading}>
-              <div><h3 id="brief-heading">The concept brief</h3><p className={styles.help}>Demo car · synthetic concept, not a production vehicle</p></div>
+              <div><h3 id="brief-heading" tabIndex={-1}>The concept brief</h3><p className={styles.help}>Demo car · synthetic concept, not a production vehicle</p></div>
               <button className={styles.secondary} disabled={editingLocked || !permitted || !snapshot?.customer || !snapshot.context}
                 onClick={() => void controller.createBrief()}>{brief ? "Refresh brief" : "Create brief"}</button>
             </div>
@@ -318,6 +343,7 @@ export default function KioskPage() {
           </section>
         </section>
       </div>
+      </details>
       <div className={styles.activity} role="status" aria-live="polite">{state.busy ? `${state.busy}…` : active ? "Session connected. You can end it at any time." : "No automatic session creation. Your guide controls pairing."}</div>
       <footer className={styles.footer}><span>Movie Magic · Showroom tablet</span><span>Separate from the creator workbench · refresh requires trusted rejoining</span></footer>
     </main>
