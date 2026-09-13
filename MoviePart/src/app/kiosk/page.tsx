@@ -33,6 +33,7 @@ export default function KioskPage() {
   const [pausedAnimation, setPausedAnimation] = useState(false);
   const [fullscreenNote, setFullscreenNote] = useState<string | null>(null);
   const [moviePaused, setMoviePaused] = useState(true);
+  const [movieMuted, setMovieMuted] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerTrigger = useRef<HTMLElement | null>(null);
   const prompt = showroomPrompt(state);
@@ -67,6 +68,7 @@ export default function KioskPage() {
   useEffect(() => {
     const element = video.current;
     setMoviePaused(true);
+    setMovieMuted(false);
     return () => { if (element) { element.pause(); element.removeAttribute("src"); element.load(); } };
   }, [state.movieUrl]);
   useEffect(() => { setEditStep(null); }, [snapshot?.pendingAction?.pendingActionId]);
@@ -79,7 +81,7 @@ export default function KioskPage() {
     } catch { setFullscreenNote("Fullscreen wasn't available. The face still fills the page; Add to Home Screen is available on iPad."); }
   }
   async function play() {
-    try { await video.current?.play(); }
+    try { await video.current?.play(); controller.clearError(); }
     catch { controller.reportError("Playback was blocked. Tap Play movie again to start with sound."); }
   }
 
@@ -120,7 +122,8 @@ export default function KioskPage() {
       {!pending && active && (touch || editStep) && ["consent", "visitor", "context", "selection"].includes(step) &&
         <TouchAnswer key={`${step}:${snapshot?.inputRevision}`} controller={controller} step={step} onDone={() => setEditStep(null)} />}
       {!pending && active && prompt.step === "review" && <div className={styles.actions}>
-        <button className={styles.primary} disabled={state.busy} onClick={() => run(controller.requestStudio())}>Review my movie</button>
+        <button className={styles.primary} disabled={!controller.canRequestStudio()} onClick={() => run(controller.requestStudio())}>Review my movie</button>
+        {!controller.canRequestStudio() && <p className={styles.help}>Finish syncing your current photos before reviewing the movie.</p>}
       </div>}
       {!pending && active && prompt.step === "ready" && <div className={styles.actions}>
         <button className={styles.primary} disabled={state.movieLoading} onClick={() => run(controller.acceptPlayback())}>
@@ -128,8 +131,16 @@ export default function KioskPage() {
         </button>
         <button onClick={() => runtime.movieLater()}>Keep talking</button>
       </div>}
-      {active && prompt.step === "calendar" && !pending && touch && snapshot?.calendar.status !== "scheduled" &&
+      {active && prompt.step === "calendar" && !pending && touch && ["idle", "draft", "failed"].includes(snapshot?.calendar.status ?? "") &&
         <CalendarAnswer controller={controller} />}
+      {snapshot?.calendar.status === "uncertain" && <section className={styles.card} aria-label="Appointment recovery">
+        <h2>The appointment result is uncertain.</h2>
+        <p className={styles.help}>Check the same approved appointment, without sending a new invitation or changing its details.</p>
+        <div className={styles.actions}><button disabled={state.busy || !controller.canRetryCalendar()}
+          onClick={() => run(controller.retryCalendarConfirmation())}>Check original appointment result</button></div>
+        {!controller.canRetryCalendar() && <p className={styles.help}>The operator needs to reconcile the original confirmation. Do not create a replacement invitation.</p>}
+      </section>}
+      {snapshot?.calendar.status === "submitting" && <p className={styles.help} role="status">Checking your approved appointment. No second invitation will be created.</p>}
       {snapshot?.studio.status === "running" && <p className={styles.help}>Studio: {snapshot.studio.stage}</p>}
       {snapshot?.studio.status === "awaiting_review" && <p className={styles.help}>The storyboard needs operator review in the creator studio before the movie can continue.</p>}
       {runtime.voiceError && <p className={styles.error} role="alert">{runtime.voiceError} Use the touch controls below.</p>}
@@ -158,11 +169,12 @@ export default function KioskPage() {
             <video ref={video} src={state.movieUrl} playsInline preload="metadata" disablePictureInPicture
               controlsList="nofullscreen nodownload noremoteplayback" aria-label="Showroom movie"
               onPlaying={() => { setMoviePaused(false); controller.onPlaying(); }}
+              onVolumeChange={event => setMovieMuted(event.currentTarget.muted)}
               onPause={() => setMoviePaused(true)} onEnded={() => run(controller.onEnded())}
               onError={() => controller.reportError("The movie could not play. Ask the operator or retry playback.")} />
             <div className={styles.movieControls}>
               <button className={styles.primary} onClick={() => moviePaused ? run(play()) : video.current?.pause()}>{moviePaused ? "Play movie" : "Pause movie"}</button>
-              <button onClick={() => { if (video.current) video.current.muted = !video.current.muted; }}>Toggle movie sound</button>
+              <button aria-pressed={movieMuted} onClick={() => { if (video.current) video.current.muted = !video.current.muted; }}>{movieMuted ? "Unmute movie" : "Mute movie"}</button>
               {state.playbackError && <button onClick={() => run(controller.retryPlaybackAcknowledgement())}>Retry acknowledgement</button>}
             </div>
             <p className={styles.help}>Live voice and camera are paused. Stop robot stays available.</p>

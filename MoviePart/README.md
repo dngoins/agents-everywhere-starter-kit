@@ -59,6 +59,12 @@ event. Only `ended` enables post-movie scheduling. Calendar readback includes
 the exact 60-minute time, timezone, location and invitees before confirmation.
 Ending/revoking clears local tracks and blob URLs and requests server cleanup;
 it does not cancel a confirmed appointment.
+An uncertain appointment uses **Check original appointment result** to replay
+only its exact previously approved confirmation; it never creates a replacement
+invitation. Lost replies reuse the original action or upload identity. A definite
+revision-conflict rejection requires a refreshed upload attempt instead. Local
+withdrawal immediately aborts media and remains in force even if a stale server
+snapshot still contains the old consent.
 
 The old `KioskController`, guide and local-demo narrator remain isolated for
 legacy callers and regression coverage; the active `/kiosk` does not use them.
