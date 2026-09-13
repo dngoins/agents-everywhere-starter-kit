@@ -248,6 +248,29 @@ test("gateway sanitizes network errors, upstream errors and redirects without fo
   }
 });
 
+test("only exact 409 revision conflicts expose a definitive retry classification", async () => {
+  const cases = [
+    { status: 409, body: '{"error":{"code":"REVISION_CONFLICT","message":"secret internal path"}}', expected: "REVISION_CONFLICT" },
+    { status: 400, body: '{"error":{"code":"REVISION_CONFLICT"}}', expected: "SHOWROOM_REQUEST_FAILED" },
+    { status: 409, body: '{"error":{"code":"EVENT_CONFLICT"}}', expected: "SHOWROOM_REQUEST_FAILED" },
+    { status: 409, body: '{"error":{"code":"DUPLICATE_IMAGE"}}', expected: "SHOWROOM_REQUEST_FAILED" },
+    { status: 409, body: '{"error":{"code":["REVISION_CONFLICT"]}}', expected: "SHOWROOM_REQUEST_FAILED" },
+    { status: 409, body: '{"code":"REVISION_CONFLICT"}', expected: "SHOWROOM_REQUEST_FAILED" },
+    { status: 409, body: '{"error":{"code":"REVISION_CONFLICT_SUFFIX"}}', expected: "SHOWROOM_REQUEST_FAILED" },
+    { status: 409, body: '{"error":{"code":"REVISION_CONFLICT"', expected: "SHOWROOM_REQUEST_FAILED" },
+    { status: 409, body: '{"error":{"code":"REVISION_CONFLICT","message":"' + "x".repeat(4096) + '"}}', expected: "SHOWROOM_REQUEST_FAILED" },
+  ];
+  for (const item of cases) {
+    const response = await showroomGateway(request(), {
+      ...options, fetch: async () => new Response(item.body, { status: item.status, headers: { "Content-Type": "application/json" } }),
+    });
+    assert.equal(response.status, item.status);
+    const payload = await response.json();
+    assert.equal(payload.error.code, item.expected);
+    assert.doesNotMatch(payload.error.message, /secret|internal|xxxxx/);
+  }
+});
+
 test("gateway rejects invalid upstreams, insecure public origins and invalid limits", async () => {
   for (const invalid of [
     { upstream: "http://evil.test" }, { upstream: "https://user:password@api.test" },

@@ -47,10 +47,7 @@ flowchart LR
     Visitor --> Kiosk
     Kiosk -->|"Same-origin HTTPS; session capability"| Gateway
     Gateway -->|"Allowlisted HTTP routes only"| Orchestrator
-    Orchestrator -->|"Optional Live SDP setup"| Voice
-    Kiosk <-->|"WebRTC audio; not browser TTS"| Voice
-    Orchestrator -->|"Legacy HTTP media mode only"| Media
-    Orchestrator -->|"Full studio mode; private machine token"| Studio
+    Orchestrator -->|"HTTP media mode: service token"| Media
     Visitor --> Studio
     Studio --> Worker
     Worker --> Models
@@ -98,27 +95,6 @@ independent launcher flags. `--ui-port 3202` remains supported; no live voice,
 film generation, calendar write or physical enablement is inferred from stored
 credentials. The full-studio option runs the creator worker, not the legacy
 dedicated media service.
-
-### Start the integrated showroom safely
-
-From the repository root:
-
-```powershell
-npm --prefix FinalProject ci
-npm --prefix MoviePart ci
-npm --prefix MoviePart run assets:showroom
-npm --prefix FinalProject run build
-npm --prefix FinalProject run dev:kiosk -- --ui-port 3202
-```
-
-The launcher defaults to fixture film, disabled live voice/calendar/bridge, and
-private loopback service ports. The operator obtains a one-time kiosk code using
-the generated private bootstrap file; the iPad receives only that short-lived
-code. Add `--live-voice` to reuse the existing private RobotPart voice
-configuration, or separately select `--live-studio`, `--google-calendar` and
-`--windows-bridge` after their readiness requirements are satisfied. For iPad
-deployment, use an exact `--public-origin https://...` and the restricted trusted
-HTTPS proxy described in the [deployment guide](docs/showroom-https.md).
 
 ### Start the offline orchestrator
 

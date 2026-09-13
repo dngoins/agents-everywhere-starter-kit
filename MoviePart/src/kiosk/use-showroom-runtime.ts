@@ -35,6 +35,8 @@ export function useShowroomRuntime(controller: ShowroomController,
   const closeVoice = useRef<() => void>(() => {});
   closeVoice.current = () => {
     const closingGeneration = generation.current;
+    transcript.current = { speaker: "", text: "", end: 0 };
+    lastContext.current = "";
     generation.current++;
     voiceRoot.current.abort(); voiceRoot.current = new AbortController();
     microphone.current?.getTracks().forEach(track => track.stop()); microphone.current = null;

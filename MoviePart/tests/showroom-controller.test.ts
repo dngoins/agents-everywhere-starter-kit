@@ -178,6 +178,50 @@ test("revocation fences pending uploads and clears previews immediately", async 
   assert.equal(f.actions.filter(action => action.type === "capture_set_recorded").length, 0);
 });
 
+test("local withdrawal aborts media immediately and old consent cannot reopen capture after a lost response", async t => {
+  const f = fixture(); t.after(() => f.controller.dispose());
+  await f.controller.pair("ABCD1234"); await f.addPhoto();
+  const consent = f.controller.getState().snapshot!.consent!;
+  f.api.action = async () => { throw new ShowroomClientError("Withdrawal response lost."); };
+  await assert.rejects(f.controller.consent({
+    policyVersion: consent.policyVersion, personalization: true, capture: false, likeness: true,
+    providerTransfer: true, calendar: false, motion: false,
+  }), /lost/);
+  assert.equal(f.controller.canCapture(), false);
+  assert.equal(f.capture.getState().references.length, 0);
+  await f.controller.refresh();
+  assert.equal(f.controller.canCapture(), false, "a stale authorized snapshot cannot undo local withdrawal");
+  assert.equal(f.capture.getState().status, "off");
+  f.setSnapshot({ consent: { ...consent, consentId: randomUUID() }, revision: 4 });
+  await f.controller.refresh();
+  assert.equal(f.controller.canCapture(), true, "only a new authoritative consent grant can reopen capture");
+});
+
+test("withdrawal aborts an in-flight photo before waiting for a server mutation", async t => {
+  const f = fixture(); t.after(() => f.controller.dispose());
+  await f.controller.pair("ABCD1234"); await f.addPhoto();
+  let signal: AbortSignal | undefined;
+  let began!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  f.api.upload = (_blob, _query, incoming) => new Promise((_resolve, reject) => {
+    signal = incoming;
+    incoming?.addEventListener("abort", () => reject(new ShowroomClientError("Photo aborted.", 0, "ABORTED")), { once: true });
+    began();
+  });
+  const photo = f.controller.syncPhotos();
+  const rejected = assert.rejects(photo, /aborted/);
+  await started;
+  const consent = f.controller.getState().snapshot!.consent!;
+  const withdrawing = f.controller.consent({
+    policyVersion: consent.policyVersion, personalization: true, capture: false, likeness: true,
+    providerTransfer: true, calendar: false, motion: false,
+  });
+  assert.equal(signal?.aborted, true);
+  assert.equal(f.controller.canCapture(), false);
+  await rejected; await withdrawing;
+  assert.equal(f.capture.getState().references.length, 0);
+});
+
 test("playback must be explicitly accepted, actually playing, and actually ended", async t => {
   const f = fixture(); t.after(() => f.controller.dispose());
   f.ready(); await f.controller.pair("ABCD1234");

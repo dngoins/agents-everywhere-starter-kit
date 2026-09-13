@@ -59,18 +59,18 @@ event. Only `ended` enables post-movie scheduling. Calendar readback includes
 the exact 60-minute time, timezone, location and invitees before confirmation.
 Ending/revoking clears local tracks and blob URLs and requests server cleanup;
 it does not cancel a confirmed appointment.
+An uncertain appointment uses **Check original appointment result** to replay
+only its exact previously approved confirmation; it never creates a replacement
+invitation. Lost replies reuse the original action or upload identity. A definite
+revision-conflict rejection requires a refreshed upload attempt instead. Local
+withdrawal immediately aborts media and remains in force even if a stale server
+snapshot still contains the old consent.
 
 The old `KioskController`, guide and local-demo narrator remain isolated for
 legacy callers and regression coverage; the active `/kiosk` does not use them.
 Tests use injected transports, media and fixtures, never a real camera, paid
 provider or hardware. Actual iPad/Safari permissions, voice and supervised
 hardware still require operator acceptance on the target devices.
-
-## The workflow
-
-Worker heartbeat and lost-lease failures are reported as errors and exit nonzero, while intentional `SIGINT`/`SIGTERM` shutdowns are logged separately. A stopped worker never automatically resubmits paid operations; saved plans, approvals and generated assets remain available for explicit recovery.
-
-### Machine-owned studio lifecycle
 
 The full studio API supports private orchestrator sessions without changing the creator UI or the separate dedicated media-service contract. Send `Authorization: Bearer MOVIE_API_TOKEN` and `x-movie-session-id` on **every** upload, job, receipt and asset request. The scope must contain 1-128 ASCII letters, digits, `_` or `-`; it partitions the machine principal. Browser cookies cannot select that scope. Keep the token server-side and use the existing loopback-only API.
 

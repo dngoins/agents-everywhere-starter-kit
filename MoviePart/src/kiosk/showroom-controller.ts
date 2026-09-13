@@ -36,6 +36,8 @@ export class ShowroomController {
   private listeners = new Set<() => void>();
   private capability: ShowroomSessionCreated | null = null;
   private root = new AbortController();
+  private mediaRoot = new AbortController();
+  private blockedConsentId: string | null = null;
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
   private expiryTimer: ReturnType<typeof setTimeout> | undefined;
   private queue: Promise<unknown> = Promise.resolve();
@@ -55,11 +57,13 @@ export class ShowroomController {
   private onPlaybackPause: (paused: boolean) => void = () => {};
   private tracking: (() => FramingTracking | null) = () => null;
   private photoUploads = new Map<string, { eventId: string; expectedRevision: number; assetId?: string }>();
-  private photoRemovals = new Map<string, { eventId: string; expectedRevision: number; assetId: string }>();
+  private photoRemovals = new Map<string, { eventId: string; expectedRevision: number; assetId: string; refreshAttempt: boolean }>();
+  private captureSetAttempt: { photoRevision: number; action: Extract<ShowroomAction, { type: "capture_set_recorded" }> } | null = null;
   private syncedPhotoRevision = -1;
   private motionInFlight = false;
   private motionUntil = 0;
   private stopRequestedAt = 0;
+  private calendarConfirmation: { draftId: string; action: Extract<ShowroomAction, { type: "action_confirmed" }> } | null = null;
 
   constructor(private readonly options: {
     api?: ShowroomApi;
@@ -90,6 +94,7 @@ export class ShowroomController {
   reportError(message: string) { this.set({ error: message }); }
   clearError() { this.set({ error: null }); }
   canCapture = () => this.state.connection === "active" && !!this.state.snapshot?.consent?.capture &&
+    this.state.snapshot.consent.consentId !== this.blockedConsentId &&
     !!this.state.snapshot.consent.likeness && !!this.state.snapshot.consent.providerTransfer &&
     this.state.snapshot.expiresAt > this.now() && !this.state.snapshot.acceptedStudio && !this.state.movieUrl;
   robotStopped = () => {
@@ -110,6 +115,8 @@ export class ShowroomController {
     this.set({ movieUrl: null, movieLoading: false, playbackError: null });
   }
   private clearLocal() {
+    this.blockedConsentId = this.state.snapshot?.consent?.consentId ?? null;
+    this.mediaRoot.abort(); this.mediaRoot = new AbortController();
     this.onSuspend();
     this.capture.clear();
     this.clearMovie();
@@ -119,7 +126,9 @@ export class ShowroomController {
     this.root.abort(); this.root = new AbortController();
     this.queue = Promise.resolve(); this.confirmations.clear();
     this.photoUploads.clear(); this.photoRemovals.clear(); this.syncedPhotoRevision = -1;
+    this.captureSetAttempt = null;
     this.motionInFlight = false; this.motionUntil = 0; this.stopRequestedAt = 0;
+    this.calendarConfirmation = null;
     this.clearLocal();
   }
   private receive(snapshot: ShowroomSnapshot) {
@@ -132,7 +141,8 @@ export class ShowroomController {
     if (this.motionInFlight && snapshot.bridge?.stopped && snapshot.bridge.lastHeartbeatAt !== null &&
       snapshot.bridge.lastHeartbeatAt >= this.motionUntil &&
       this.now() - snapshot.bridge.lastHeartbeatAt < 1000) this.motionInFlight = false;
-    if (!snapshot.consent?.capture || !snapshot.consent.likeness || !snapshot.consent.providerTransfer) {
+    if (!snapshot.consent?.capture || !snapshot.consent.likeness || !snapshot.consent.providerTransfer ||
+      snapshot.consent.consentId === this.blockedConsentId) {
       if (previousConsent?.capture || previousConsent?.likeness) this.onSuspend();
       this.capture.authorize(false, false);
       this.clearMovie();
@@ -148,6 +158,7 @@ export class ShowroomController {
     clearTimeout(this.expiryTimer);
     this.expiryTimer = setTimeout(() => {
       this.reset(); this.api.forget(); this.capability = null;
+      this.blockedConsentId = null;
       this.set({ connection: "ended", error: "This session expired. Pair again to continue.", snapshot: null });
     }, Math.max(1, Math.min(snapshot.expiresAt - this.now(), 2147483647)));
   }
@@ -247,7 +258,15 @@ export class ShowroomController {
           this.photoUploads.set(reference.id, receipt);
         }
         if (!receipt.assetId) {
-          const uploaded = await this.api.upload(reference.blob, receipt, root.signal);
+          let uploaded: Awaited<ReturnType<ShowroomApi["upload"]>>;
+          try {
+            uploaded = await this.api.upload(reference.blob, receipt, this.mediaRoot.signal);
+          } catch (error) {
+            if (error instanceof ShowroomClientError && error.status === 409 && error.code === "REVISION_CONFLICT") {
+              this.photoUploads.delete(reference.id);
+            }
+            throw error;
+          }
           if (!this.valid(root) || !this.canCapture()) return;
           receipt.assetId = uploaded.assetId;
           this.receive(uploaded.snapshot);
@@ -256,15 +275,26 @@ export class ShowroomController {
       if (capture.revision !== this.capture.getState().revision || !this.canCapture()) return;
       const snapshot = this.state.snapshot!;
       const references = capture.references.map(reference => ({ assetId: this.photoUploads.get(reference.id)!.assetId!, view: reference.view }));
-      const result = await this.api.action({
+      const action: Extract<ShowroomAction, { type: "capture_set_recorded" }> = {
         schemaVersion: 1, eventId: this.uuid(), expectedRevision: snapshot.revision, type: "capture_set_recorded",
         payload: {
           captureSetId: this.uuid(), sessionId: snapshot.sessionId, consentId: snapshot.consent!.consentId,
           inputRevision: snapshot.inputRevision, references,
           primaryAssetId: this.photoUploads.get(capture.primaryId!)!.assetId!,
         },
-      }, root.signal);
+      };
+      if (!this.captureSetAttempt || this.captureSetAttempt.photoRevision !== capture.revision) {
+        this.captureSetAttempt = { photoRevision: capture.revision, action };
+      }
+      let result: ShowroomSnapshot;
+      try {
+        result = await this.api.action(this.captureSetAttempt.action, root.signal);
+      } catch (error) {
+        if (error instanceof ShowroomClientError && error.status === 409 && error.code === "REVISION_CONFLICT") this.captureSetAttempt = null;
+        throw error;
+      }
       if (!this.valid(root)) return;
+      this.captureSetAttempt = null;
       this.syncedPhotoRevision = capture.revision;
       this.receive(result);
     });
@@ -272,7 +302,7 @@ export class ShowroomController {
   removePhoto(id: string) {
     if (this.state.busy) return Promise.reject(new Error("Wait for the current photo upload to finish."));
     const assetId = this.photoUploads.get(id)?.assetId;
-    if (assetId) this.photoRemovals.set(id, { assetId, eventId: this.uuid(), expectedRevision: this.state.snapshot!.revision });
+    if (assetId) this.photoRemovals.set(id, { assetId, eventId: this.uuid(), expectedRevision: this.state.snapshot!.revision, refreshAttempt: false });
     this.capture.remove(id);
     this.photoUploads.delete(id);
     if (!assetId) return Promise.resolve();
@@ -280,9 +310,18 @@ export class ShowroomController {
   }
   private async flushRemovals(root: AbortController) {
     for (const [id, removal] of this.photoRemovals) {
-      const result = await this.api.removeReference(removal.assetId, {
-        eventId: removal.eventId, expectedRevision: removal.expectedRevision,
-      }, root.signal);
+      if (removal.refreshAttempt) {
+        removal.eventId = this.uuid(); removal.expectedRevision = this.state.snapshot!.revision; removal.refreshAttempt = false;
+      }
+      let result: ShowroomSnapshot;
+      try {
+        result = await this.api.removeReference(removal.assetId, {
+          eventId: removal.eventId, expectedRevision: removal.expectedRevision,
+        }, root.signal);
+      } catch (error) {
+        if (error instanceof ShowroomClientError && error.status === 409 && error.code === "REVISION_CONFLICT") removal.refreshAttempt = true;
+        throw error;
+      }
       if (!this.valid(root)) return;
       this.photoRemovals.delete(id);
       this.receive(result);
@@ -304,8 +343,22 @@ export class ShowroomController {
     if (!input.capture || !input.likeness || !input.providerTransfer) this.clearLocal();
     return this.mutate({ type: "consent_recorded", payload: input });
   }
+  canRequestStudio() {
+    const snapshot = this.state.snapshot, capture = this.capture.getState();
+    if (this.state.connection !== "active" || !snapshot?.consent || snapshot.consent.consentId === this.blockedConsentId ||
+      !snapshot.captureSet?.references.length || snapshot.acceptedStudio || this.state.busy ||
+      this.photoRemovals.size || this.captureSetAttempt) return false;
+    if (capture.references.length || this.photoUploads.size || this.syncedPhotoRevision >= 0) {
+      return this.syncedPhotoRevision === capture.revision &&
+        snapshot.captureSet.references.length === capture.references.length &&
+        capture.references.every(reference => snapshot.captureSet!.references.some(owned =>
+          owned.assetId === this.photoUploads.get(reference.id)?.assetId && owned.view === reference.view));
+    }
+    return true;
+  }
   requestStudio() {
     if (!this.state.snapshot?.captureSet?.references.length) return Promise.reject(new Error("Select one to four photos before creating a movie."));
+    if (!this.canRequestStudio()) return Promise.reject(new Error("Finish syncing the current photos and removals before reviewing your movie."));
     this.onStopCapture();
     this.capture.pause("Photos paused while you review your movie.");
     return this.mutate({ type: "studio_requested", payload: {} });
@@ -327,11 +380,18 @@ export class ShowroomController {
     try {
       assertPendingConfirmation(snapshot.pendingAction, confirmation, pending.expectedRevision, snapshot.revision, snapshot.inputRevision, this.now());
       if (decision === "approve" && pending.kind === "studio") {
+        if (!this.canRequestStudio()) throw new Error("Current photo permissions and a fully synced photo set are required before movie approval.");
         this.onStopCapture();
         if (this.capture.getState().references.length) this.capture.freeze();
       }
     } catch (error) { return Promise.reject(error); }
     const eventId = existing?.eventId ?? this.uuid();
+    if (pending.kind === "calendar" && decision === "approve") {
+      this.calendarConfirmation = {
+        draftId: pending.payload.draftId,
+        action: { schemaVersion: 1, eventId, expectedRevision: pending.expectedRevision, type: "action_confirmed", payload: confirmation },
+      };
+    }
     const receipt = { eventId, request: Promise.resolve(snapshot), failed: false, channel: confirmation.channel };
     const request = this.mutate({ type: "action_confirmed", payload: confirmation }, pending.expectedRevision, eventId).catch(error => {
       receipt.failed = true;
@@ -343,6 +403,18 @@ export class ShowroomController {
     receipt.request = request;
     this.confirmations.set(key, receipt);
     return request;
+  }
+  canRetryCalendar() {
+    const status = this.state.snapshot?.calendar;
+    return this.state.connection === "active" && status?.status === "uncertain" &&
+      status.draftId === this.calendarConfirmation?.draftId;
+  }
+  retryCalendarConfirmation() {
+    if (!this.canRetryCalendar() || !this.calendarConfirmation) {
+      return Promise.reject(new Error("Ask the operator to reconcile the original confirmed appointment. Do not create a replacement invitation."));
+    }
+    const action = this.calendarConfirmation.action;
+    return this.mutate(action, action.expectedRevision, action.eventId);
   }
   requestFraming() {
     const snapshot = this.state.snapshot, bridge = snapshot?.bridge;
@@ -392,6 +464,9 @@ export class ShowroomController {
   async acceptPlayback() {
     const studio = this.state.snapshot?.studio;
     if (studio?.status !== "ready" || this.state.movieLoading || this.state.movieUrl) return;
+    if (!this.state.snapshot?.consent || this.state.snapshot.consent.consentId === this.blockedConsentId) {
+      throw new Error("Media permission was withdrawn. The operator must complete cleanup before another presentation.");
+    }
     this.onPlaybackPause(true); this.onStopCapture(); this.capture.pause("Camera paused for the movie.");
     const root = this.root;
     this.set({ movieLoading: true, playbackError: null });
@@ -402,7 +477,9 @@ export class ShowroomController {
       return;
     }
     try {
-      const movie = await this.api.movie(studio, root.signal);
+      const media = this.mediaRoot;
+      const movie = await this.api.movie(studio, media.signal);
+      if (media.signal.aborted) return;
       if (!this.valid(root)) return;
       this.playback = { jobId: studio.jobId, assetId: studio.assetId, playbackId: this.uuid() };
       this.set({ movieUrl: this.urls.createObjectURL(movie), movieLoading: false });
@@ -452,6 +529,10 @@ export class ShowroomController {
       throw new Error("This event requires local camera or browser playback evidence.");
     }
     if (action.type === "action_confirmed") {
+      const original = this.calendarConfirmation?.action.payload;
+      if (this.canRetryCalendar() && original && action.payload.channel === "voice" &&
+        action.payload.decision === "approve" && action.payload.pendingActionId === original.pendingActionId &&
+        action.payload.confirmationFingerprint === original.confirmationFingerprint) return this.retryCalendarConfirmation();
       const pending = this.pending();
       if (!pending || action.payload.channel !== "voice" || action.expectedRevision !== pending.expectedRevision ||
         action.payload.pendingActionId !== pending.pendingActionId ||
