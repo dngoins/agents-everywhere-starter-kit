@@ -81,17 +81,21 @@ A ready job includes:
   "result": {
     "assetId": "<uuid>",
     "mimeType": "video/mp4",
-    "provenance": "mock_fixture",
-    "durationSeconds": 1,
-    "byteLength": 2880,
-    "checksum": "<sha256>"
+    "provenance": "prerendered_fallback",
+    "durationSeconds": 10,
+    "byteLength": 4273110,
+    "checksum": "69674967b142a7cd9f121df4aac8bb90d2f24274bae5d45d8841b5a337d41773"
   }
 }
 ```
 
-The size above illustrates the synthetic fixture, not a fixed contract. Fetch the bytes using `GET /v1/sessions/{id}/assets/{assetId}` with session authorization. Single byte ranges are supported.
+The metadata above illustrates the user-provided default demo, not fixed contract values. Fetch the bytes using `GET /v1/sessions/{id}/assets/{assetId}` with session authorization. Single byte ranges are supported.
 
-`mock_fixture` is a synthetic color-bar video, not a personalized ad. `prerendered_fallback` must be presented as prerecorded. `generated` indicates the selected real media adapter's output; real audiovisual correctness still requires live integration acceptance.
+`mock_fixture` identifies the synthetic color-bar test video, not a personalized ad. `prerendered_fallback` must be presented as prerecorded; it is now also the default offline demo's provenance, not necessarily evidence of a provider failure. The explicitly selected offline demo works with `ALLOW_DEMO_FALLBACKS=false`; failed-provider recovery remains a separate opt-in. `generated` indicates the selected real media adapter's output; real audiovisual correctness still requires live integration acceptance.
+
+Only the immutable local demo provider, registered privately after validating the supplied asset, may return prerecorded media as a primary result. Provider names, copied metadata, and lookalike provider objects do not grant that capability. The guard rejecting unsolicited prerecorded output from HTTP/other primary providers remains in place. No wire-contract or provenance-enum change is required.
+
+The default supplied MP4 retains its original audio and bytes. Its ten-second video duration is reported even though the unchanged mock brief totals six seconds; its audio/container tail ends at 10.026667 seconds. It does not execute the brief or generate media for the selected customer. Display **PRERECORDED DEMO · Prerecorded media, not generated for this customer.** Do not infer a generation provider or depicted identity from the supplied file. Historical synthetic examples in the frozen interface bundle remain valid examples, not a description of the current default asset.
 
 `DELETE /v1/sessions/{id}` cancels local work, clears assets, and invalidates the capability. The HTTP adapter separately requests renderer cancellation/deletion. Failed remote cleanup leaves an ignored recovery receipt; local cancellation does not prove removal of all third-party copies.
 

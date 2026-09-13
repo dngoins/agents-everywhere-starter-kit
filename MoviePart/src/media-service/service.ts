@@ -29,6 +29,7 @@ interface Active {
 export interface ServiceOptions extends RenderTools {
   directory: string;
   executor: MediaExecutor;
+  jobTimeoutMs?: number;
   cleanupTimeoutMs?: number;
   removeWork?: (directory: string, signal: AbortSignal) => Promise<void>;
 }
@@ -52,6 +53,10 @@ export class MediaService {
   private ownsLease = false;
 
   constructor(private readonly options: ServiceOptions) {
+    if (options.jobTimeoutMs !== undefined &&
+        (!Number.isSafeInteger(options.jobTimeoutMs) || options.jobTimeoutMs < 1 || options.jobTimeoutMs > 30 * 60_000)) {
+      throw new ServiceError(400, "INVALID_JOB_TIMEOUT");
+    }
     this.directory = path.resolve(options.directory);
   }
   private lock<T>(operation: () => Promise<T>): Promise<T> {
@@ -193,7 +198,7 @@ export class MediaService {
       });
       if (!claimed) return;
       const { record, active } = claimed;
-      const signal = AbortSignal.any([active.controller.signal, AbortSignal.timeout(10 * 60_000)]);
+      const signal = AbortSignal.any([active.controller.signal, AbortSignal.timeout(this.options.jobTimeoutMs ?? 10 * 60_000)]);
       try {
         const brief = briefSchema.parse(await readJson(path.join(this.workPath(record), "brief.json")));
         signal.throwIfAborted();

@@ -137,6 +137,32 @@ Full source-level fields and nullability are in `contracts.ts`. The endpoint imp
 
 This is a **creator-studio** feature, not a change to Dwight's media-service protocol.
 
+### Movie-first production
+
+Set `production_mode: "movie-first"` only when explicitly choosing animated-image output. Omitting the field retains reviewed-storyboard API behavior; the web form defaults to reviewed storyboards and required Google Veo animation.
+
+To finish an existing failed job without further continuity scoring, add `production_mode: "movie-first"` to its retry request below. That mode choice is part of the idempotency receipt; reuse the exact request on transport retry.
+
+The job response reports `productionMode`, and `image-motion` result mode means an animated-image film. Once the validated MP4 exists it is available in `result`, including while status is `EXTRACTING_STORYBOARD`. The returned `frames` in this mode are **only** frames extracted from that MP4, tagged with `source: "extracted"`, `extractedAtSeconds`, and `continuity.verdict: "NOT_REVIEWED"`. They are not fabricated PASS results. Intermediate generation inputs remain private scene artifacts, not the displayed storyboard.
+
+### Required Google Veo hybrid video
+
+Use `production_mode: "reviewed-storyboard"`, `enable_hero_video: true`, and `video_provider: "google-veo"`. The server needs a private `GEMINI_API_KEY` and a supported `VEO_MODEL`. The completed clip must be `hero.provider: "Google Veo"` and final output `hybrid-video`. Missing/failed animation blocks final output rather than falling back to image motion.
+
+The OpenAI vision/director/image credentials remain separate from Google's key. The existing movie-service/orchestrator default prerecorded demo does not require either generation provider.
+
+### Alternative OpenAI hybrid video
+
+If explicitly selecting OpenAI's temporary video adapter, use `production_mode: "reviewed-storyboard"`, `enable_hero_video: true`, and `video_provider: "openai-sora"` for an approved-stills plus Sora-animation movie. `OPENAI_VIDEO_MODEL` is configured on the server (`sora-2-pro` by default). The plan records `videoProvider`, and the animated hero is deliberately car-only because the current Sora API prohibits real people and rejects human-face image references. The Sora API is scheduled to shut down September 24, 2026; no future-supported replacement is claimed.
+
+All planned storyboard shots must pass before video submission. Sora output is saved as `hero.provider: "OpenAI Sora"` with its operation ID and must be present in a `hybrid-video` result. No video or a failed Sora operation means no completed slideshow substitute. Retry resumes a saved provider operation rather than charging for another video; an attempted submission without an operation ID is not automatically repeated.
+
+Only legacy requests that enable a hero but omit `video_provider` retain optional Veo fallback. Explicit `google-veo` or `openai-sora` requests require real video. Do not silently relabel an older `image-motion` movie as a generated hybrid.
+
+Missing scene visuals are generated once per explicit attempt, without critic-driven retries. Usable existing visuals and the saved plan are retained. If extraction alone fails, another retry reuses the encoded movie rather than rendering or generating it again.
+
+### Reviewed-storyboard recovery
+
 `GET /api/movie-jobs/{jobId}` includes `job.retry` with `attempt`, `eligible`, `approvedShots`, and `remainingShots`. A failed job with a saved director plan/reference can be retried using:
 
 ```http
@@ -168,4 +194,25 @@ Persist/reuse the **same request** after a lost acknowledgement. It returns the 
 
 Requests are owner-authorized and may not supply replacement plans, frames, references, prompts, or product settings. The existing plan and passed images are immutable recovery inputs. Missing/corrupt approved artifacts, missing original consent, and absent worker/rendering prerequisites fail preflight without scheduling paid work.
 
-The worker skips approved shots, includes the latest rejection reasons in each failed shot's first retry prompt, and runs the remaining shots in order. Each explicit retry gets the bounded two-submission-per-unfinished-shot budget; it never resets that budget automatically. Previous errors/events/candidates remain saved. The response's final result stays unavailable until every required shot is approved and rendering completes. Partial storyboard images remain inspectable as incomplete evidence only.
+In reviewed-storyboard mode the worker skips AI/designer-approved shots and includes the latest rejection reasons or designer note in the next attempt. The configurable concurrency defaults to two and per-shot attempt budget to eight; output remains in planned order. Previous errors/events/candidates remain saved. Final custom output stays unavailable until every required shot is approved and rendering completes. The two-minute timing target is advisory only.
+
+## Designer frame decisions
+
+Use `POST /api/movie-jobs/{jobId}/frames/{assetId}/decision` with:
+
+```json
+{
+  "action": "keep",
+  "note": "Image 2 is fine; keep it and move to image 3.",
+  "idempotency_key": "designer-action-unique-key",
+  "expected_revision": 0,
+  "expected_attempt": 0,
+  "resume": true
+}
+```
+
+`action` is `keep` or `regenerate`. Take `expected_revision` from `job.reviewRevision` and `expected_attempt` from `job.retry.attempt`. Reuse the identical request/key after an uncertain response. The response contains the authoritative `{job}`; changed-payload key reuse or stale revisions return 409.
+
+The request targets the exact displayed asset, not merely a shot number. Keep records `frame.designerDecision` and preserves the original `frame.continuity` assessment. Regenerate invalidates previous approvals for that shot without deleting them. With `resume: true`, a failed job is requeued atomically; an actively reviewed job observes the decision and continues without a second queued run.
+
+`job.designerReviewAllowed` tells the client when creative decisions are allowed. The worker locks the selected storyboard before video/rendering, and the API rejects edits after that point or to completed output. An in-flight provider call may finish before the decision takes effect. Neither consent nor provider restrictions can be overridden by a designer note.

@@ -2,14 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AssetView, ConfigView, JobView } from "../domain/http";
-import { getTimeline, type HeroMode, type JobRequest, type JobStatus, type StoryFormat, type TemplateId } from "../domain";
+import { getTimeline, type HeroMode, type JobRequest, type JobStatus, type StoryFormat, type TemplateId, type ProductionMode, type VideoProviderId } from "../domain";
 import { allTemplates as templates, getTemplate } from "../templates";
 import { mainStoryboardFrames } from "../lib/storyboard-view";
-import { MovieMagicClient } from "../../integration/client";
+import { MovieMagicClient, MovieMagicHttpError } from "../../integration/client";
 import { CarReferences } from "../components/car-references";
 import { creationBlockers, selectableProducts } from "../lib/studio-readiness";
-import type { MovieRetryRequest } from "../../integration/contracts";
+import type { FrameDecisionRequest, MovieRetryRequest, StoryboardFrame } from "../../integration/contracts";
 import { MovieRecovery } from "../components/movie-recovery";
+import { productionTiming } from "../lib/production-timing";
+import { isFrameApproved } from "../domain/storyboard-state";
+import { DesignerFrameControls } from "../components/designer-frame-controls";
 
 const stageLabels: Record<JobStatus, string> = {
   RECEIVED: "Queued for the studio",
@@ -19,6 +22,7 @@ const stageLabels: Record<JobStatus, string> = {
   VALIDATING: "Reviewing visual continuity",
   GENERATING_HERO: "Animating your hero shot",
   ASSEMBLING: "Assembling your movie",
+  EXTRACTING_STORYBOARD: "Movie ready — extracting storyboard",
   COMPLETED: "Your movie is ready",
   FAILED: "This take needs attention",
 };
@@ -54,12 +58,14 @@ export default function MovieStudio() {
   const [template, setTemplate] = useState<TemplateId>("TOMORROW_DRIVE");
   const [storyFormat, setStoryFormat] = useState<StoryFormat>("four-shot");
   const [heroMode, setHeroMode] = useState<HeroMode>("LIKENESS");
+  const [productionMode, setProductionMode] = useState<ProductionMode>("reviewed-storyboard");
+  const [videoProvider, setVideoProvider] = useState<VideoProviderId | "">("google-veo");
   const [firstName, setFirstName] = useState("");
   const [city, setCity] = useState("");
   const [interests, setInterests] = useState(["", "", ""]);
   const [likeness, setLikeness] = useState(false);
   const [personalization, setPersonalization] = useState(false);
-  const [hero, setHero] = useState(false);
+  const [hero, setHero] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showBlockers, setShowBlockers] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -67,6 +73,12 @@ export default function MovieStudio() {
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState("");
   const [pollRevision, setPollRevision] = useState(0);
+  const [clock, setClock] = useState(() => Date.now());
+  const [designerBusy, setDesignerBusy] = useState(false);
+  const [designerMessage, setDesignerMessage] = useState("");
+  const [candidateChoices, setCandidateChoices] = useState<Record<string, string>>({});
+  const decisionInFlight = useRef(false);
+  const pendingDecision = useRef<{ jobId: string; assetId: string; request: FrameDecisionRequest } | null>(null);
   const retryInFlight = useRef(false);
   const pendingRetry = useRef<{ jobId: string; request: MovieRetryRequest } | null>(null);
   const pendingRequest = useRef<JobRequest | null>(null);
@@ -79,6 +91,15 @@ export default function MovieStudio() {
     config, productId: product, needsPhotos: heroMode === "LIKENESS", photoCount: files.length,
     generationConsent: likeness, personalizationConsent: personalization,
   });
+  if (productionMode === "reviewed-storyboard" && hero && !videoProvider) {
+    blockers.push("Choose a verified animation provider.");
+  }
+  if (productionMode === "reviewed-storyboard" && hero && videoProvider === "openai-sora" && !config?.providers.openaiVideo?.available) {
+    blockers.push("Configure OpenAI video access for Sora animation; still images will not be substituted.");
+  }
+  if (productionMode === "reviewed-storyboard" && hero && videoProvider === "google-veo" && !config?.providers.veo.available) {
+    blockers.push("Set GEMINI_API_KEY in MoviePart/.env to enable Google Veo animation. A still-only movie will not be substituted.");
+  }
 
   async function refreshConfig() {
     try {
@@ -101,6 +122,18 @@ export default function MovieStudio() {
     setThumbnails(urls);
     return () => urls.forEach(url => URL.revokeObjectURL(url));
   }, [files]);
+
+  useEffect(() => {
+    if (!jobId || terminal(job)) return;
+    const timer = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [jobId, job?.status]);
+
+  useEffect(() => {
+    setCandidateChoices({});
+    setDesignerMessage("");
+    pendingDecision.current = null;
+  }, [jobId]);
 
   useEffect(() => {
     if (!jobId) return;
@@ -172,6 +205,7 @@ export default function MovieStudio() {
           preferred_template: template,
           story_format: storyFormat,
           hero_mode: heroMode,
+          production_mode: productionMode,
           personalization_profile: {
             ...(firstName.trim() ? { customerFirstName: firstName.trim() } : {}),
             ...(city.trim() ? { city: city.trim() } : {}),
@@ -180,6 +214,7 @@ export default function MovieStudio() {
             })),
           },
           enable_hero_video: hero,
+          ...(hero && productionMode === "reviewed-storyboard" && videoProvider ? { video_provider: videoProvider } : {}),
           idempotency_key: crypto.randomUUID(),
         };
         pendingRequest.current = body;
@@ -201,15 +236,19 @@ export default function MovieStudio() {
     }
   }
 
-  async function retryMovie() {
+  async function retryMovie(makeMovieFirst = false) {
     if (!job || !job.retry?.eligible || busy || retryInFlight.current) return;
     retryInFlight.current = true;
     setRetrying(true);
     setRetryError("");
     const client = new MovieMagicClient({ baseUrl: window.location.origin });
-    if (pendingRetry.current?.jobId !== job.id) {
+    if (pendingRetry.current?.jobId !== job.id ||
+        !!pendingRetry.current.request.production_mode !== makeMovieFirst) {
       pendingRetry.current = {
-        jobId: job.id, request: { idempotency_key: crypto.randomUUID(), expected_attempt: job.retry.attempt },
+        jobId: job.id, request: {
+          idempotency_key: crypto.randomUUID(), expected_attempt: job.retry.attempt,
+          ...(makeMovieFirst ? { production_mode: "movie-first" as const } : {}),
+        },
       };
     }
     try {
@@ -243,12 +282,51 @@ export default function MovieStudio() {
     }
   }
 
+  async function decideFrame(frame: StoryboardFrame, action: "keep" | "regenerate", note: string) {
+    if (!job || !job.designerReviewAllowed || decisionInFlight.current || submitting || retrying) return;
+    decisionInFlight.current = true;
+    setDesignerBusy(true);
+    setDesignerMessage("");
+    setRetryError("");
+    const prior = pendingDecision.current;
+    if (!prior || prior.jobId !== job.id || prior.assetId !== frame.assetId || prior.request.action !== action || prior.request.note !== note.trim()) {
+      pendingDecision.current = {
+        jobId: job.id, assetId: frame.assetId,
+        request: { action, note: note.trim(), idempotency_key: crypto.randomUUID(),
+          expected_revision: job.reviewRevision ?? 0, expected_attempt: job.retry?.attempt ?? 0, resume: false },
+      };
+    }
+    try {
+      const updated = await new MovieMagicClient({ baseUrl: window.location.origin }).decideFrame(job.id, frame.assetId, pendingDecision.current!.request);
+      setJob(updated);
+      pendingDecision.current = null;
+      pendingRetry.current = null;
+      setCandidateChoices(current => {
+        const next = { ...current };
+        delete next[frame.shotId];
+        return next;
+      });
+      setDesignerMessage(action === "keep"
+        ? `${frame.shotId} kept. Choose any other images, then continue a paused movie with your selections. No new generation was queued.`
+        : `${frame.shotId} marked for regeneration with your note. Continue the paused movie when your selections are ready.`);
+    } catch (failure) {
+      if (failure instanceof MovieMagicHttpError && ["STALE_REVIEW", "REVIEW_LOCKED"].includes(failure.code)) pendingDecision.current = null;
+      setRetryError(failure instanceof Error ? failure.message : "The designer decision could not be saved.");
+    } finally {
+      decisionInFlight.current = false;
+      setDesignerBusy(false);
+      setPollRevision(value => value + 1);
+    }
+  }
+
   const selectedTemplate = getTemplate(template, storyFormat);
   const timeline = getTimeline(job?.plan?.storyFormat ?? storyFormat, job?.plan?.templateId ?? template);
   const shotIds = job?.plan?.shots.map(shot => shot.id) ?? timeline.shotIds;
   const storyboardFrames = mainStoryboardFrames(job?.frames ?? [], shotIds);
-  const approvedCount = storyboardFrames.filter(frame => frame.continuity.verdict === "PASS").length;
-  const completeMovie = job?.status === "COMPLETED" && approvedCount === shotIds.length ? job.result : null;
+  const approvedCount = storyboardFrames.filter(isFrameApproved).length;
+  const timing = productionTiming(job, clock);
+  const movieFirst = (job?.productionMode ?? productionMode) === "movie-first";
+  const completeMovie = job && (movieFirst || job.status === "COMPLETED" && approvedCount === shotIds.length) ? job.result : null;
   return <div className="studio">
     <header className="masthead">
       <a href="/" className="wordmark" aria-label="Movie Magic home"><span className="mark">m<span>m</span></span> movie magic<span className="wordmark-dot">.</span></a>
@@ -289,7 +367,7 @@ export default function MovieStudio() {
               {files.length > 0 && <button className="text-button" type="button" onClick={() => fileInput.current?.click()}>Replace photos <span aria-hidden="true">↗</span></button>}
               </> : <p className="field-help">{heroMode === "POV" ? "The camera takes the driver's point of view. Your face is not depicted." : "A generic driver is seen from behind or in silhouette. This does not recreate your likeness."} No customer photo is uploaded or sent to a generation provider.</p>}
               <div className="consent-block">
-                <label><input type="checkbox" checked={likeness} onChange={event => { changed(); setLikeness(event.target.checked); }} /><span>{heroMode === "LIKENESS" ? `I have permission to use this person's likeness and send these photos to OpenAI${hero ? " and Google" : ""} for generation.` : `I approve this ${heroMode === "POV" ? "first-person" : "generic-driver"} advertisement being generated by OpenAI${hero ? " and Google" : ""}, without representing my actual face.`}</span></label>
+                <label><input type="checkbox" checked={likeness} onChange={event => { changed(); setLikeness(event.target.checked); }} /><span>{heroMode === "LIKENESS" ? `I have permission to use this person's likeness in a subtly slimmer, stylized portrayal and send these photos to OpenAI${hero && videoProvider === "google-veo" ? " and Google" : ""} for generation. Original photos and designer-kept images are unchanged.` : `I approve this ${heroMode === "POV" ? "first-person" : "generic-driver"} advertisement being generated by OpenAI${hero && videoProvider === "google-veo" ? " and Google" : ""}, without representing my actual face.`}</span></label>
                 <label><input type="checkbox" checked={personalization} onChange={event => { changed(); setPersonalization(event.target.checked); }} /><span>I approve using the interests I provide in this advertisement.</span></label>
               </div>
             </section>
@@ -319,6 +397,17 @@ export default function MovieStudio() {
             </section>
             <section className="brief-section template-section">
               <h2><span className="step">03</span>Set the direction</h2>
+              <label className="field-label" htmlFor="production-mode">PRODUCTION FLOW</label>
+              <select id="production-mode" value={productionMode} onChange={event => {
+                changed(); setProductionMode(event.target.value as ProductionMode);
+                setHero(event.target.value === "reviewed-storyboard");
+              }}>
+              <option value="reviewed-storyboard">Review every storyboard shot first</option>
+              <option value="movie-first">Image motion only · no generated animation</option>
+              </select>
+              <p className="field-help">{productionMode === "movie-first"
+                ? "Creates an MP4 with cinematic motion from AI visuals, without the continuity scoring loop. Storyboard images are extracted from the finished movie. This is not fully AI-generated moving footage."
+                : "Every storyboard shot must pass continuity review before rendering."}</p>
               <label className="field-label" htmlFor="story-format">STORY FORMAT</label>
               <select id="story-format" value={storyFormat} onChange={event => { changed(); setStoryFormat(event.target.value as StoryFormat); }}>
                 <option value="four-shot">Classic · four shots · 18 seconds</option>
@@ -328,7 +417,22 @@ export default function MovieStudio() {
                 <button key={item.id} type="button" className={`template-option ${template === item.id ? "selected" : ""}`} aria-pressed={template === item.id} onClick={() => { changed(); setTemplate(item.id); }}>
                   <span className="template-index">0{index + 1}</span><span><strong>{item.name}</strong><small>{item.description}</small></span><span className="radio-dot" />
                 </button>)}</div>
-              <label className="hero-toggle"><input type="checkbox" checked={hero} disabled={!config?.providers.veo.available} onChange={event => { changed(); setHero(event.target.checked); setLikeness(false); }} /><span><strong>Add a Veo hero shot</strong><small>Optional paid enhancement. Your movie still renders if video generation is unavailable.</small></span></label>
+              {productionMode === "reviewed-storyboard" && <>
+                <label className="hero-toggle"><input type="checkbox" checked={hero} onChange={event => { changed(); setHero(event.target.checked); setLikeness(false); }} /><span><strong>Include genuine generated animation</strong><small>{hero ? "Approved stills plus an eight-second video-model clip." : "Disabled: output uses still-image motion only."}</small></span></label>
+                {hero && <>
+                  <label className="field-label" htmlFor="video-provider">ANIMATION PROVIDER</label>
+                  <select id="video-provider" value={videoProvider} onChange={event => { changed(); setVideoProvider(event.target.value as VideoProviderId); setLikeness(false); }}>
+                    <option value="">Choose a verified provider</option>
+                    <option value="google-veo">Google Veo 3.1 · required animation</option>
+                    <option value="openai-sora">OpenAI Sora 2 Pro · temporary API support</option>
+                  </select>
+                  <p className="field-help">{!videoProvider
+                    ? "Select an animation provider. The supplied prerecorded demo is separate from generating a new customer movie."
+                    : videoProvider === "openai-sora"
+                    ? "Sora generates moving car footage. The customer stays in approved stills; human-face inputs and real-person video are not supported. Failed animation never becomes a slideshow. Temporary integration: OpenAI's announced API shutdown is September 24, 2026."
+                    : "Veo generates an eight-second moving clip after storyboard approval. It uses your Google API key, not the OpenAI key. If animation fails or credentials are missing, the app stops rather than substituting a slideshow."}</p>
+                </>}
+              </>}
             </section>
           </fieldset>
           <div className="create-area">
@@ -347,34 +451,49 @@ export default function MovieStudio() {
 
         <section className="screening-room" aria-label="Movie preview and progress">
           <div className="screening-heading"><div><p className="eyebrow">YOUR PRIVATE SCREENING ROOM</p><h2>{job ? stageLabels[job.status] : "The story starts here."}</h2></div><span className="ratio-tag">16:9 / HD</span></div>
+          {timing && <div className="production-timing">
+            <span>Production time <strong>{timing.label}</strong> <span className="timing-target">Target ~2 minutes</span></span>
+            <p>{timing.terminal
+              ? "The target is advisory, not a cutoff."
+              : timing.overTarget
+                ? "Still creating your movie. The robot can continue the conversation; passing two minutes does not stop generation or substitute a demo."
+                : "Creating in the background while the robot continues the conversation."}</p>
+          </div>}
           <div className={`cinema-screen ${completeMovie ? "has-video" : ""}`}>
             {completeMovie ? <video key={completeMovie.assetId} controls preload="metadata" src={mediaUrl(completeMovie.assetId)} aria-label="Your completed personalized movie" /> : <div className="screen-empty">
               <div className="screen-guide corner-tl" /><div className="screen-guide corner-tr" /><div className="screen-guide corner-bl" /><div className="screen-guide corner-br" />
-              <span className="screen-kicker">{job?.status === "FAILED" ? "INCOMPLETE STORYBOARD" : job ? "IN THE MAKING" : "CAST YOURSELF"}</span>
+              <span className="screen-kicker">{job?.status === "FAILED" ? "PRODUCTION NEEDS ATTENTION" : job ? "IN THE MAKING" : "CAST YOURSELF"}</span>
               <div className="screen-title">{job ? (job.plan?.logline || stageLabels[job.status]) : <>A familiar face.<br />An entirely new <em>perspective.</em></>}</div>
-              <span className="screen-caption">{job ? `${approvedCount} of ${shotIds.length} storyboard frames approved` : `${selectedTemplate.name.toUpperCase()} · AN ORIGINAL MOVIE MAGIC FILM`}</span>
+              <span className="screen-caption">{job ? movieFirst ? "MOVIE FIRST · STORYBOARD EXTRACTED AFTER ENCODING" : `${approvedCount} of ${shotIds.length} storyboard frames approved` : `${selectedTemplate.name.toUpperCase()} · AN ORIGINAL MOVIE MAGIC FILM`}</span>
               <span className="screen-bottom">REFERENCE-LED. PERSONALLY DIRECTED.</span>
             </div>}
           </div>
-          {completeMovie && <div className="result-bar"><span><i />{completeMovie.mode === "hybrid-video" ? "Hybrid film · one Veo hero shot" : "Storyboard-motion film"} · {completeMovie.durationSeconds.toFixed(1)}s{!completeMovie.hasAudio ? " · No audio" : ""}</span><a href={mediaUrl(completeMovie.assetId)} download="my-movie.mp4">Download film ↗</a></div>}
+          {completeMovie && <div className="result-bar"><span><i />{completeMovie.mode === "image-motion" ? "Image-motion output · not generated video footage" : completeMovie.mode === "hybrid-video" ? `Hybrid film · ${job?.hero?.provider ?? "generated"} animation + stills` : "Storyboard-motion film"} · {completeMovie.durationSeconds.toFixed(1)}s{!completeMovie.hasAudio ? " · No audio" : ""}</span><a href={mediaUrl(completeMovie.assetId)} download="my-movie.mp4">Download film ↗</a></div>}
+          {completeMovie && completeMovie.mode !== "hybrid-video" && <p className="incomplete-label">This saved result contains image motion, not a video-model animation. Storyboard approval is restored; genuine new animation requires a configured video-generation provider.</p>}
 
           {error && <div className="notice error" role="alert"><strong>Something needs your attention</strong><p>{error}</p>{jobId && !job && <button className="text-button" onClick={() => { setJobId(null); localStorage.removeItem("movie-magic:last-job"); }}>Stop watching this job</button>}</div>}
           {job?.error && <div className="notice error" role="alert"><strong>{stageLabels[job.error.stage]}</strong><p>{job.error.message}</p><small>Your saved plan and artifacts remain below. {job.retry?.eligible ? "Retry this movie to keep approved work, or create a new take to change its brief." : "A new take requires an explicit submission."}</small></div>}
-          {job && <MovieRecovery job={job} retrying={retrying} disabled={busy} onRetry={() => void retryMovie()} />}
+          {job && <MovieRecovery job={job} retrying={retrying} disabled={busy} onRetry={() => void retryMovie()} {...(job.productionMode === "movie-first" ? { onMakeMovie: () => void retryMovie(true) } : {})} />}
           {retryError && <div className="notice error" role="alert"><strong>Retry needs attention</strong><p>{retryError}</p><p>Retrying this request uses the same key; it does not automatically authorize a second attempt.</p><button className="text-button" onClick={() => { pendingRetry.current = null; setRetryError(""); setPollRevision(value => value + 1); }}>Refresh movie before a new retry decision</button></div>}
+          {designerMessage && <div className="notice" role="status">{designerMessage}</div>}
           {!!job?.warnings.length && <div className="notice"><strong>Production notes</strong>{job.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
 
-          <div className="storyboard-heading"><h3>The storyboard <span>{String(storyboardFrames.length).padStart(2, "0")} / {String(shotIds.length).padStart(2, "0")}</span></h3><span className="small-muted">CONSISTENT REFERENCES. ONE STORY.</span></div>
-          {job?.plan && !completeMovie && <p className="incomplete-label">{approvedCount < shotIds.length ? `Incomplete storyboard preview — ${approvedCount} of ${shotIds.length} shots approved. This is not a finished movie.` : "All storyboard shots are approved. Final movie assembly has not completed."}</p>}
+          <div className="storyboard-heading"><h3>{movieFirst ? "Storyboard extracted from the movie" : "The storyboard"} <span>{String(storyboardFrames.length).padStart(2, "0")} / {String(shotIds.length).padStart(2, "0")}</span></h3><span className="small-muted">{movieFirst ? "ACTUAL MOVIE FRAMES" : "CONSISTENT REFERENCES. ONE STORY."}</span></div>
+          {job?.plan && !completeMovie && <p className="incomplete-label">{movieFirst ? "The movie is being made first. Its storyboard images will appear after encoding." : approvedCount < shotIds.length ? `Incomplete storyboard preview — ${approvedCount} of ${shotIds.length} shots approved. This is not a finished movie.` : "All storyboard shots are approved. Final movie assembly has not completed."}</p>}
           <div className={`storyboard-grid ${shotIds.length === 6 ? "six-shots" : ""}`}>{shotIds.map((shotId, index) => {
-            const frame = storyboardFrames.find(item => item.shotId === shotId);
+            const candidates = job?.frames.filter(item => item.shotId === shotId) ?? [];
+            const frame = candidates.find(item => item.assetId === candidateChoices[shotId]) ?? storyboardFrames.find(item => item.shotId === shotId);
             const shot = job?.plan?.shots[index];
             return <article className="storyboard-card" key={shotId}><div className="frame-image">{frame ?
               // eslint-disable-next-line @next/next/no-img-element
               <img src={mediaUrl(frame.assetId)} alt={shot?.action || `Storyboard shot ${index + 1}`} /> : <FrameIcon />}
               <span className="frame-number">0{index + 1}</span></div><div className="frame-detail"><span>{(shotIds.length === 6 ? ["ORDINARY MOMENT", "THE SPARK", "CROSSING OVER", "THE IMPOSSIBLE", "MASTERY", "THE PAYOFF"] : ["THE BEGINNING", "THE CONNECTION", "THE JOURNEY", "THE ARRIVAL"])[index]}</span><small>{shot?.durationSeconds ?? timeline.durations[index]} SEC</small></div>
-              {shot && <p>{shot.purpose}</p>}{frame ? <span className={`review-badge ${frame.continuity.verdict === "PASS" ? "" : "review-warning"}`}>{frame.continuity.verdict === "PASS" ? "Approved — kept on retry" : "Needs revision"}</span> : job?.plan && <span className="review-badge review-warning">Not generated</span>}
-              {frame && frame.continuity.verdict !== "PASS" && <details className="frame-corrections"><summary>Review corrections</summary><ul>{frame.continuity.reasons.map((reason, at) => <li key={at}>{reason}</li>)}</ul></details>}
+              {shot && <p>{shot.purpose}</p>}{frame ? <span className={`review-badge ${isFrameApproved(frame) || frame.source === "extracted" ? "" : "review-warning"}`}>{frame.source === "extracted" ? `Movie frame · ${frame.extractedAtSeconds?.toFixed(2)}s` : frame.designerDecision?.action === "keep" ? "Kept by designer" : frame.designerDecision?.action === "regenerate" ? "Designer requested regeneration" : frame.continuity.verdict === "PASS" ? "Approved by AI" : "Needs revision"}</span> : job?.plan && <span className="review-badge review-warning">{movieFirst ? "Waiting for movie" : "Not generated"}</span>}
+              {frame && frame.continuity.verdict !== "PASS" && frame.source !== "extracted" && <details className="frame-corrections"><summary>Review corrections</summary><ul>{frame.continuity.reasons.map((reason, at) => <li key={at}>{reason}</li>)}</ul></details>}
+              {frame && job && !movieFirst && <DesignerFrameControls key={`${job.id}-${frame.assetId}`} frame={frame} candidates={candidates}
+                disabled={designerBusy || submitting || retrying} reviewAllowed={!!job.designerReviewAllowed}
+                onSelect={assetId => setCandidateChoices(current => ({ ...current, [shotId]: assetId }))}
+                onDecision={(action, note) => void decideFrame(frame, action, note)} />}
             </article>;
           })}</div>
 
@@ -386,7 +505,8 @@ export default function MovieStudio() {
 
           <details className="setup-details" open={config ? !ready : true}><summary>Studio setup <span>{ready ? "Ready for production" : "Configuration required"}</span></summary>
             <div className="readiness-grid">{[
-              ["OpenAI", config?.providers.openai], ["Local worker", config?.worker], ["FFmpeg", config?.renderer], ["Veo (optional)", config?.providers.veo],
+              ["OpenAI", config?.providers.openai], ["Local worker", config?.worker], ["FFmpeg", config?.renderer], ["Google Veo", config?.providers.veo],
+              ["Sora 2 Pro", config?.providers.openaiVideo],
             ].map(([label, value]) => {
               const status = typeof value === "object" ? value : undefined;
               return <div key={String(label)}><span className={status?.available ? "ready-dot" : "waiting-dot"} /><strong>{String(label)}</strong><p>{status?.message || "Loading configuration…"}</p></div>;

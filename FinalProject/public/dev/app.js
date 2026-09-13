@@ -121,7 +121,7 @@ async function loadPreview(job, generation) {
   view["media-label"].textContent = provenance === "mock_fixture"
     ? "SYNTHETIC MOCK · Silent color bars, not personalized media."
     : provenance === "prerendered_fallback"
-      ? "PRERENDERED FALLBACK · Not freshly generated personalized media."
+      ? "PRERECORDED DEMO · Prerecorded media, not generated for this customer."
       : "PROVIDER RESULT · Generated provenance reported by the API; independently verify content before a live demo.";
   view["media-label"].hidden = false;
   status("Media downloaded. Press Play; playback completion will acknowledge the reveal.");
@@ -213,7 +213,7 @@ function acknowledgeReveal() {
     await event("media_revealed", { jobId: previewJob.jobId });
     acknowledged = true;
     await refresh();
-    status("Playback-ended acknowledgement recorded. This proves only synthetic local playback.");
+    status("Playback-ended acknowledgement recorded. This proves only local demo playback, not customer-specific generation.");
   });
 }
 view.preview.addEventListener("ended", acknowledgeReveal);

@@ -4,12 +4,14 @@
  * Copy this folder into a consumer project; do not import MoviePart internals.
  */
 export type TemplateId = "VELOCITY" | "TOMORROW_DRIVE" | "DREAM_ROUTE" | "HERO_OF_THE_DAY";
+export type ProductionMode = "reviewed-storyboard" | "movie-first";
+export type VideoProviderId = "openai-sora" | "google-veo";
 export type StoryFormat = "four-shot" | "six-shot";
 export type HeroMode = "LIKENESS" | "POV" | "PERSONALIZED";
 export type ShotId = "shot_01" | "shot_02" | "shot_03" | "shot_04" | "shot_05" | "shot_06";
 export type JobStatus =
   | "RECEIVED" | "BUILDING_REFERENCES" | "DIRECTING" | "STORYBOARDING"
-  | "VALIDATING" | "GENERATING_HERO" | "ASSEMBLING" | "COMPLETED" | "FAILED";
+  | "VALIDATING" | "GENERATING_HERO" | "ASSEMBLING" | "EXTRACTING_STORYBOARD" | "COMPLETED" | "FAILED";
 
 export interface Consent {
   likeness: true;
@@ -34,6 +36,7 @@ export interface PersonalizationProfile {
 
 export interface MovieJobRequest {
   schema_version: 1;
+  production_mode?: ProductionMode;
   /** Opaque robot/conversation identifier, echoed as JobView.sessionId. */
   session_id: string;
   /** Upload photos first; these are server-issued IDs, never paths or URLs. */
@@ -51,6 +54,8 @@ export interface MovieJobRequest {
   hero_mode?: HeroMode;
   /** Defaults to false. A failure of this enhancement uses storyboard motion. */
   enable_hero_video?: boolean;
+  /** Sora requires a real animated car-only clip, never a still-only fallback. */
+  video_provider?: VideoProviderId;
   /** Reuse for a transport retry of the same request; change for a new movie. */
   idempotency_key: string;
 }
@@ -103,7 +108,7 @@ export interface Readiness {
 export interface ConfigView {
   templates: SceneTemplate[];
   products: { id: string; name: string; ready: boolean }[];
-  providers: { openai: Readiness; veo: Readiness };
+  providers: { openai: Readiness; veo: Readiness; openaiVideo?: Readiness };
   worker: Readiness;
   renderer: Readiness;
 }
@@ -162,6 +167,7 @@ export interface MoviePlan {
   durationSeconds: number;
   aspectRatio: "16:9";
   heroShotId: "shot_03" | "shot_04";
+  videoProvider?: VideoProviderId;
   logline: string;
   wardrobe: string;
   cinematicStyle: string;
@@ -179,21 +185,25 @@ export interface ContinuityResult {
 export interface StoryboardFrame {
   shotId: string;
   assetId: string;
-  continuity: ContinuityResult;
+  continuity: Omit<ContinuityResult, "verdict"> & { verdict: ContinuityResult["verdict"] | "NOT_REVIEWED" };
   provider: string;
   model: string;
+  source?: "generated" | "extracted";
+  extractedAtSeconds?: number;
+  designerDecision?: { action: "keep" | "regenerate"; note: string; at: string };
 }
 
 export interface VideoArtifact {
   assetId: string;
   shotId: "shot_03" | "shot_04";
-  provider: "Google Veo";
+  provider: "Google Veo" | "OpenAI Sora";
   model: string;
+  operationId?: string;
 }
 
 export interface RenderResult {
   assetId: string;
-  mode: "storyboard-motion" | "hybrid-video";
+  mode: "storyboard-motion" | "hybrid-video" | "image-motion";
   durationSeconds: number;
   hasAudio: boolean;
 }
@@ -211,6 +221,8 @@ export interface MovieRetryRequest {
   idempotency_key: string;
   /** Number of retries already accepted, from JobView.retry.attempt. */
   expected_attempt: number;
+  /** Explicitly switch a failed reviewed job to movie-first production. */
+  production_mode?: "movie-first";
 }
 export interface MovieRetryAccepted extends MovieJobAccepted {
   retry_attempt: number;
@@ -222,10 +234,20 @@ export interface MovieRetrySummary {
   remainingShots: number;
 }
 
+export interface FrameDecisionRequest {
+  action: "keep" | "regenerate";
+  note?: string;
+  idempotency_key: string;
+  expected_revision: number;
+  expected_attempt: number;
+  resume?: boolean;
+}
+
 export interface JobView {
   id: string;
   sessionId: string;
   status: JobStatus;
+  productionMode?: ProductionMode;
   createdAt: string;
   updatedAt: string;
   events: JobEvent[];
@@ -239,6 +261,8 @@ export interface JobView {
   result: RenderResult | null;
   /** Explicit recovery uses the saved plan and approved assets, never edited form inputs. */
   retry?: MovieRetrySummary;
+  reviewRevision?: number;
+  designerReviewAllowed?: boolean;
 }
 
 export interface JobResponse { job: JobView }

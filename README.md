@@ -6,7 +6,9 @@ Magic Pitch Robot (MagicPitch) brings an AI sales experience into the room: a ta
 
 The goal is a useful, understandable encounter, not a chatbot attached to a robot. The customer controls what is captured and shared; the interface distinguishes a generated result from a prerecorded or synthetic demonstration.
 
-> **Current scope:** the repository contains runnable components and integration contracts, not a claim that every physical, live-generation, and scheduling step is deployed together. The robot's standalone movie is prerecorded, the orchestrator defaults to synthetic fixtures, and live generation needs configured accounts and authorized assets. No encounter-time guarantee is implied.
+Movie production runs in the background while the robot continues the showroom conversation. About two minutes is a soft target, not an enforced cutoff. Designers can keep a satisfactory storyboard image and continue instead of paying for repeated cosmetic corrections.
+
+> **Current scope:** the repository contains runnable components and integration contracts, not a claim that every physical, live-generation, and scheduling step is deployed together. The robot's standalone movie is prerecorded; the orchestrator uses a synthetic roster and your supplied prerecorded example as its default movie. Live generation needs configured accounts and authorized assets. No encounter-time guarantee is implied.
 
 [Architecture and design](docs/architecture.md) | [Movie studio and kiosk](MoviePart/README.md) | [Orchestrator](FinalProject/README.md) | [Robot setup](RobotPart/README.md) | [Teammate interfaces](FinalProject/interfaces/v1/README.md)
 
@@ -72,7 +74,7 @@ See the [detailed design](docs/architecture.md) for sequence diagrams, job lifec
 | Workflow | Entry point | What it demonstrates |
 |---|---|---|
 | Robot and voice demo | `http://localhost:5173` | Hardware/browser interaction, local face detection, conversation, prerecorded movie, and mock scheduling |
-| Orchestrator developer harness | `http://127.0.0.1:3101/dev` | Offline consent/session/job flow with synthetic media; no paid generation required |
+| Orchestrator developer harness | `http://127.0.0.1:3101/dev` | Offline consent/session/job flow with the supplied prerecorded demo; no paid generation required |
 | Showroom kiosk | `http://127.0.0.1:3200/kiosk` | Customer-facing client of the orchestrator: explicit consent, confirmed context, brief review, and authorized playback |
 | Creator studio | `http://127.0.0.1:3200/` | Independent reference-backed film creation with visible setup requirements |
 | Media service | `http://127.0.0.1:3201` | Server-to-server asynchronous rendering; not a browser UI |
@@ -115,7 +117,7 @@ For hardware operation, follow [RobotPart's prerequisites and start commands](Ro
 
 ## Movie design
 
-Movie Magic builds a controlled film from stable references rather than asking one prompt to invent an entire advertisement. Original photos anchor likeness and vehicle appearance; a structured plan controls narrative, camera direction, and continuity.
+Movie Magic builds a controlled film from stable references rather than asking one prompt to invent an entire advertisement. Original photos anchor likeness and vehicle appearance; a structured plan controls narrative and camera direction. The studio defaults to **storyboard approval and Google Veo animation**. Astra generates the plan and Flare generates still images; Veo provides genuine moving footage using a separately configured Google key. Missing animation is not replaced with a slideshow.
 
 | Choice | Behavior |
 |---|---|
@@ -124,10 +126,11 @@ Movie Magic builds a controlled film from stable references rather than asking o
 | Classic format | Four shots, 18 seconds |
 | Tiya's six-beat format | Six shots, 23 seconds; Hero of the Day is 24 seconds |
 | Hero modes | `LIKENESS` uses approved customer photos; `POV` and `PERSONALIZED` omit customer photos from provider calls |
-| Baseline rendering | Approved stills with pan/zoom, optionally scored with a permitted local audio file |
-| Optional enhancement | One eight-second Veo hero clip, with an explicit return to storyboard motion if the enhancement fails |
+| Baseline rendering | Usable scene visuals with pan/zoom, optionally scored with a permitted local audio file; movie-first does not claim continuity approval |
+| Default animation | One required eight-second Veo hero clip; missing or failed animation blocks the hybrid movie |
+| Required OpenAI animation | An eight-second Sora car-only clip after storyboard approval; failure blocks the hybrid movie instead of substituting still-image zooms |
 
-The studio's output is a validated 16:9, 720p, 24 fps MP4. Its `storyboard-motion` and `hybrid-video` modes describe how it was assembled. They are **not** the orchestrator's result-provenance labels.
+The studio's output is a validated 16:9, 720p, 24 fps MP4. `image-motion` identifies movie-first animated-image output; `storyboard-motion` and `hybrid-video` describe reviewed stills or a hybrid with an existing/generated hero clip. These are **not** the orchestrator's result-provenance labels, and animated stills are not fully AI-generated moving footage.
 
 Dwight's current `demo-car-v1` brief instead describes an unbranded synthetic concept, with its own scenes, on-screen copy, CTA, and duration. The media service respects that brief; it does not convert it into a Tesla or Toyota advertisement.
 

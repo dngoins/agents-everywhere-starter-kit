@@ -219,7 +219,9 @@ test("another failed retry retains approvals and latest corrections, and never a
   assert.equal(failed.result, null);
   assert.equal(renderCalls, 0);
   assert.deepEqual(edits.map(edit => edit.shotId), ["shot_03", "shot_03"]);
-  assert.deepEqual(edits[1].corrections, ["Fix the departure background."]);
+  assert.deepEqual(edits[1].corrections.slice(0, 1), ["Fix the departure background."]);
+  assert.equal(edits[1].corrections.length, 2);
+  assert.ok(edits[1].corrections[1].length > 0);
   assert.equal(failed.frames.length, 5);
   assert.deepEqual(failed.frames.slice(0, 2), f.frames.slice(0, 2));
   assert.equal((await f.retry(body)).attempt, 1);
@@ -388,4 +390,18 @@ test("retry HTTP rejects malformed commands and unavailable worker before queuin
   assert.equal((await f.handlers.retryJob(bad, f.job.id)).status, 400);
   assert.equal((await f.store.get(f.job.id)).status, "FAILED");
   assert.equal((await f.store.get(f.job.id)).retries, undefined);
+});
+
+test("explicit movie-first conversion preserves input identity and deduplicates mode changes", async t => {
+  const f = await fixture(t, 0);
+  const original = await f.store.get(f.job.id);
+  const request = { ...action(), production_mode: "movie-first" as const };
+  const converted = await f.retry(request);
+  assert.equal(converted.job.productionMode, "movie-first");
+  assert.deepEqual(converted.job.plan, original.plan);
+  assert.deepEqual(converted.job.request, original.request);
+  assert.deepEqual(converted.job.frames, original.frames);
+  assert.equal((await f.retry(request)).attempt, 1);
+  await assert.rejects(f.retry({ idempotency_key: request.idempotency_key, expected_attempt: 0 }), /different attempt/);
+  assert.equal((await f.store.get(f.job.id)).retries?.length, 1);
 });

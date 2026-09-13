@@ -10,6 +10,7 @@ import type { GenerationContext, MovieConfig, RendererService } from "../domain/
 import { buildAssemblyArguments, buildHeroArguments, buildStillArguments } from "./arguments";
 import { probeMedia, validateRenderedMedia } from "./probe";
 import { runMediaCommand, throwIfRenderCancelled } from "./process";
+import { isFrameApproved } from "../domain/storyboard-state";
 
 type RenderInput = Parameters<RendererService["render"]>[0];
 
@@ -21,6 +22,7 @@ export function validateRenderInput(input: RenderInput, jobId: string): void {
     throw new MovieError("INVALID_RENDER_INPUT", "Rendering requires a valid job and planned, approved storyboard frames.", 400);
   }
   const timeline = getTimeline(input.plan.storyFormat, input.plan.templateId);
+  const movieFirst = input.productionMode === "movie-first";
   if (input.frames.length !== timeline.shotIds.length) {
     throw new MovieError("INVALID_RENDER_INPUT", "Rendering requires one approved storyboard frame per planned shot.", 400);
   }
@@ -30,9 +32,11 @@ export function validateRenderInput(input: RenderInput, jobId: string): void {
     if (
       shot.id !== timeline.shotIds[index] || shot.durationSeconds !== timeline.durations[index]
       || !storyboardFrameSchema.safeParse(frame).success || frame.shotId !== shot.id
-      || frame.continuity.verdict !== "PASS"
+      || (movieFirst ? frame.designerDecision?.action === "regenerate" || frame.continuity.verdict === "REJECT" && !isFrameApproved(frame) : !isFrameApproved(frame))
     ) {
-      throw new MovieError("INVALID_RENDER_INPUT", "The PASS frames must match the selected timeline's ordered shot plan.", 400);
+      throw new MovieError("INVALID_RENDER_INPUT", movieFirst
+        ? "Movie-first rendering requires one usable visual per planned scene; rejected or missing visuals are not substituted."
+        : "The PASS frames must match the selected timeline's ordered shot plan.", 400);
     }
   }
   if (input.hero !== null && (
@@ -102,6 +106,10 @@ export function createRenderer(config: MovieConfig): RendererService {
     ready: () => checkReady(),
     async render(input, context) {
       validateRenderInput(input, context.jobId);
+      const requiredProvider = input.plan.videoProvider === "openai-sora" ? "OpenAI Sora" : input.plan.videoProvider === "google-veo" ? "Google Veo" : null;
+      if (requiredProvider && (input.productionMode === "movie-first" || input.hero?.provider !== requiredProvider)) {
+        throw new MovieError("ANIMATION_REQUIRED", `Hybrid output requires its generated ${requiredProvider} clip. Still-image motion is not a substitute.`, 409);
+      }
       const timeline = getTimeline(input.plan.storyFormat, input.plan.templateId);
       throwIfRenderCancelled(context.signal);
       const readiness = await checkReady(context.signal);
@@ -117,6 +125,7 @@ export function createRenderer(config: MovieConfig): RendererService {
           requireLocalFile(await context.media.assetPath(frame.assetId))));
         const heroPath = input.hero
           ? await requireLocalFile(await context.media.assetPath(input.hero.assetId)) : undefined;
+        const heroHasAudio = heroPath ? (await probeMedia(ffprobe, heroPath, context.signal)).audioStreamCount > 0 : false;
         let musicPath: string | undefined;
         if (config.musicPath !== undefined) {
           try {
@@ -128,8 +137,8 @@ export function createRenderer(config: MovieConfig): RendererService {
             if (error instanceof MovieError && ["RENDER_CANCELLED", "RENDER_TIMEOUT"].includes(error.code)) throw error;
             throw new MovieError("INVALID_MUSIC", "The configured licensed music bed is missing, unreadable, or has no valid audio stream.");
           }
-        } else {
-          await context.warn("No licensed music bed is configured; the movie will be silent. Provider-native audio is always muted.");
+        } else if (!heroHasAudio) {
+          await context.warn("No music bed or provider audio is available; the movie will be silent.");
         }
         const shotPaths: string[] = [];
         for (let index = 0; index < timeline.shotIds.length; index++) {
@@ -138,8 +147,10 @@ export function createRenderer(config: MovieConfig): RendererService {
           await context.report({
             stage: "ASSEMBLING", provider: "FFmpeg", shotId,
             message: shotId === timeline.heroShotId && heroPath
-              ? "Normalizing the approved hero video to eight seconds; muting native audio."
-              : "Animating the approved storyboard with a gentle centered pan and zoom.",
+              ? "Normalizing the approved hero video; its native audio will be aligned separately in the final movie."
+              : input.productionMode === "movie-first"
+                ? "Creating the movie scene with cinematic image motion."
+                : "Animating the approved storyboard with a gentle centered pan and zoom.",
           });
           const outputPath = join(directory, `${shotId}.mp4`);
           await runMediaCommand(ffmpeg!, shotId === timeline.heroShotId && heroPath
@@ -151,14 +162,14 @@ export function createRenderer(config: MovieConfig): RendererService {
         }
         await context.report({
           stage: "ASSEMBLING", provider: "FFmpeg",
-          message: `Assembling ${timeline.shotIds.length} hard-cut shots ${musicPath ? "with the configured music bed" : "without audio"}.`,
+          message: `Assembling ${timeline.shotIds.length} hard-cut shots ${heroHasAudio ? "with the provider's original audio" : musicPath ? "with the configured music bed" : "without audio"}${heroHasAudio && musicPath ? " and the configured music bed" : ""}.`,
         });
         const outputPath = join(directory, "movie.mp4");
-        await runMediaCommand(ffmpeg!, buildAssemblyArguments(shotPaths, outputPath, musicPath, timeline), {
+        await runMediaCommand(ffmpeg!, buildAssemblyArguments(shotPaths, outputPath, musicPath, timeline, heroHasAudio ? heroPath : undefined), {
           signal: context.signal, label: "FFmpeg final assembly", timeoutMs: 180_000,
         });
         const probe = await probeMedia(ffprobe, outputPath, context.signal, true);
-        const durationSeconds = validateRenderedMedia(probe, Boolean(musicPath), timeline);
+        const durationSeconds = validateRenderedMedia(probe, Boolean(musicPath) || heroHasAudio, timeline);
         const outputSize = (await stat(outputPath)).size;
         if (outputSize < 1 || outputSize > 100 * 1024 * 1024) {
           throw new MovieError("RENDER_INVALID_OUTPUT", "The rendered movie has an invalid file size.");
@@ -169,7 +180,7 @@ export function createRenderer(config: MovieConfig): RendererService {
           bytes: await readFile(outputPath), width: 1280, height: 720,
         });
         return {
-          assetId: asset.id, mode: heroPath ? "hybrid-video" : "storyboard-motion",
+          assetId: asset.id, mode: heroPath ? "hybrid-video" : input.productionMode === "movie-first" ? "image-motion" : "storyboard-motion",
           durationSeconds, hasAudio: probe.audioStreamCount > 0,
         };
       } catch (error) {

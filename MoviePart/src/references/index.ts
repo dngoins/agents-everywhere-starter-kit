@@ -7,6 +7,8 @@ import { structured, type OpenAITransport } from "../providers/openai/client";
 
 export const UNKNOWN_WARDROBE = "Unknown; preserve only wardrobe visible in the primary original photo.";
 export const GENERIC_WARDROBE = "Neutral generic clothing; no customer appearance or wardrobe is represented.";
+export const CHARACTER_PRESENTATION_INSTRUCTIONS = "For newly generated visible human characters, use an intentionally subtle, slightly slimmer silhouette with natural anatomy. Preserve facial identity, hairstyle, complexion, expression and clothing design. This is a disclosed artistic presentation choice, not a factual statement about the person's body or health. Do not infer weight, BMI or an ideal body size, invent unseen anatomy, or make an extreme transformation. Do not alter original photographs or a frame explicitly kept by the designer. Modest silhouette differences from the reference are intentional, not a continuity defect.";
+export const PRODUCT_ONLY_HERO_INSTRUCTIONS = "This is a PRODUCT-ONLY animation reference. Show only the exact reference-backed vehicle exterior; no people, faces, hands, silhouettes or reflections of people. Keep occupants out of view. Do not imply autonomous driving or a real person's identity. Depict actual rolling wheels and controlled vehicle movement, not a still-image zoom.";
 
 export function getWardrobeLock(character: CharacterReference, mode?: HeroMode): string {
   return resolveHeroMode(mode) === "LIKENESS" ? character.attributes.wardrobe ?? UNKNOWN_WARDROBE : GENERIC_WARDROBE;

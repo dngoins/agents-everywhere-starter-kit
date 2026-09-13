@@ -8,7 +8,7 @@ Local-first, consent-gated TypeScript/Hono service for Dwight's orchestration an
 - Explicit consent before identification or image upload, synthetic roster selection, conversation context, and a structured ad brief.
 - Bounded asynchronous media jobs, idempotent submission, revisioned polling, cancellation/revocation, and authorized MP4 byte ranges.
 - A **developer harness**, not Tiya's customer UI, at <http://127.0.0.1:3101/dev>.
-- An offline mock sequence using a synthetic PNG and a real, silent, one-second color-bar MP4. **This is not a generated personalized advertisement.**
+- An offline mock sequence using a synthetic PNG and the **user-provided prerecorded demo** (`fixtures/media/default-demo.mp4`): 10 seconds of 1280 × 720 H.264 video with its original AAC audio preserved. **This example was not generated for the current customer or brief.** The one-second synthetic color bars remain a tests-only fixture.
 
 This is not evidence of a working robot, consented live participant demo, Tiya media/UI integration, audiovisual browser acceptance, cloud deployment, or a measured sub-90-second live encounter. Optional real-provider configuration does not establish account access or successful external integration. Trigger.dev, Ambiguous scheduling, deployment automation, and a combined team launcher remain deferred.
 
@@ -29,7 +29,7 @@ npm run verify
 npm run dev
 ```
 
-The defaults bind to `127.0.0.1:3101` and select mock providers; no provider key is needed. For optional overrides, copy `.env.example` to `.env` and keep it private. Do not copy credentials from another checkout. `npm run dev` loads this file when present.
+The defaults bind to `127.0.0.1:3101` and select mock providers; no provider key is needed. Mock media now serves the supplied prerecorded demo with `prerendered_fallback` provenance, without calling an external provider. The runtime validates its MP4 signature, size, and SHA-256 against the immutable `src/providers/demo-media.ts` manifest at startup. For optional overrides, copy `.env.example` to `.env` and keep it private. Do not copy credentials from another checkout. `npm run dev` loads this file when present.
 
 When `DEMO_DEVICE_TOKEN` is empty, startup writes a generated token to `.runtime/device-token`. Only the pairing-file path is logged, not the token. In a separate **local** terminal:
 
@@ -37,7 +37,9 @@ When `DEMO_DEVICE_TOKEN` is empty, startup writes a generated token to `.runtime
 Get-Content .runtime\device-token | Set-Clipboard
 ```
 
-Open `/dev`, paste the token into its password field, and create a session. Select a synthetic roster entry, review and check both consent boxes, then run the flow. Press Play when the color-bar preview appears. The harness acknowledges reveal after the video ends, not merely when a job says `ready`. Revoke the session when finished.
+Open `/dev`, paste the token into its password field, and create a session. Select a synthetic roster entry, review and check both consent boxes, then run the flow. Press Play when the prerecorded demo appears; its original audio is included. The harness labels it **PRERECORDED DEMO** and acknowledges reveal after the video ends, not merely when a job says `ready`. Revoke the session when finished.
+
+The unchanged synthetic brief describes six seconds, but the prerecorded example has ten seconds of video (10.026667 seconds including the audio/container tail). Playback does not execute the brief, incorporate the uploaded image, or demonstrate new customer-specific generation. The source is user-provided; its provider, depicted identities, and licensing are not independently established by the file metadata.
 
 Do not paste pairing tokens into logs, screenshots, issues, URLs, or chat. The harness clears the device-token field and keeps only the session capability in memory. Reloading loses that credential; restart/expiry also requires a new session. The harness refuses live provider modes so its synthetic flow cannot accidentally invoke a paid provider.
 
@@ -75,14 +77,22 @@ npm run smoke
 npm start
 ```
 
-Use a new extraction directory for each release. The archive includes the lockfile, compiled API/contracts, harness, synthetic fixtures, configuration examples, runbook, contract documentation, and built-in-only smoke scripts. It excludes `.env`, `.runtime`, session data, provider logs, customer media, `node_modules`, and development source/tests. Development scripts in the unchanged manifest require a source checkout and are not usable from this runtime-only archive.
+Use a new extraction directory for each release. The archive includes the lockfile, compiled API/contracts and immutable demo manifest, harness, the explicitly allowlisted user-provided demo MP4, synthetic test fixtures, configuration examples, runbook, contract documentation, and built-in-only smoke scripts. It excludes `.env`, `.runtime`, session data, provider logs, other customer media, `node_modules`, and development source/tests. Development scripts in the unchanged manifest require a source checkout and are not usable from this runtime-only archive.
 
 ## Integration and operations
 
 - [Teammate interface bundle](interfaces/v1/README.md): self-contained handoff; [Damian](interfaces/v1/DAMIAN.md) and [Tiya](interfaces/v1/TIYA.md) have separate integration guides.
 - [HTTP contracts](docs/contracts.md): versioned events, commands, result provenance, and client integration.
 - [Runbook](docs/runbook.md): pairing, local recovery, packaging, retention, and live-integration gates.
-- [Fixture provenance](fixtures/media/README.md): generation method and checksums.
+- [Media provenance](fixtures/media/README.md): supplied-demo metadata, synthetic fixture generation method, and checksums.
 - [Approved plan](PLAN.md): scope, ownership, phased dependencies, and deferred work.
 
 In-memory sessions/jobs are deliberately single-process and non-durable. Never expose this local demo publicly or mistake a host binding change for production readiness.
+
+## Showroom timing
+
+Roughly two minutes is a product/UX target, not a generation deadline. The robot can continue the conversation while the accepted brief is processed; do not mutate or resubmit the brief for every new conversational detail.
+
+Operational safety defaults are separate: `SESSION_TTL_MS=1800000` (30 minutes) and `JOB_TIMEOUT_MS=900000` (15 minutes). Operators can configure up to a one-hour session and 30-minute media job. MoviePart's dedicated service defaults to its own 10-minute safety timeout, configurable with `MEDIA_SERVICE_JOB_TIMEOUT_MS`. Coordinate those limits deliberately; changing the studio's advisory timer does not change a running orchestrator's environment.
+
+Explicit consent revocation, cancellation and expiry still stop work and invalidate access. Media becoming ready should invite playback; it is not evidence that the customer has watched it. Existing operator `.env` values take precedence and must be reviewed when adopting these defaults.

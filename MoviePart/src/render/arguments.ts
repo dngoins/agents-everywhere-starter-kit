@@ -15,6 +15,28 @@ const encoding = [
 ];
 const localInput = ["-protocol_whitelist", "file,pipe"];
 
+function audioFilters(musicIndex: number | undefined, heroIndex: number | undefined, timeline: Timeline): string[] {
+  const filters: string[] = [];
+  const tracks: string[] = [];
+  if (musicIndex !== undefined) {
+    filters.push(`[${musicIndex}:a:0]aresample=48000,atrim=duration=${timeline.durationSeconds},asetpts=PTS-STARTPTS,`
+      + `aformat=channel_layouts=stereo,volume=0.22,afade=t=in:st=0:d=0.5,afade=t=out:st=${timeline.durationSeconds - 2}:d=2[music]`);
+    tracks.push("[music]");
+  }
+  if (heroIndex !== undefined) {
+    const position = timeline.shotIds.indexOf(timeline.heroShotId);
+    const offsetMs = timeline.durations.slice(0, position).reduce((total, seconds) => total + seconds, 0) * 1000;
+    const duration = timeline.durations[position];
+    filters.push(`[${heroIndex}:a:0]aresample=48000,atrim=duration=${duration},asetpts=PTS-STARTPTS,`
+      + `aformat=channel_layouts=stereo,apad,atrim=duration=${duration},adelay=${offsetMs}|${offsetMs},`
+      + `apad,atrim=duration=${timeline.durationSeconds}[heroAudio]`);
+    tracks.push("[heroAudio]");
+  }
+  if (tracks.length === 2) filters.push(`${tracks.join("")}amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95:level=0,atrim=duration=${timeline.durationSeconds}[a]`);
+  else if (tracks.length === 1) filters.push(`${tracks[0]}anull[a]`);
+  return filters;
+}
+
 function shotFrames(index: number, timeline: Timeline): number {
   if (!Number.isInteger(index) || index < 0 || index >= timeline.shotIds.length) {
     throw new MovieError("INVALID_RENDER_INPUT", "A movie must use its planned shots.");
@@ -70,6 +92,7 @@ export function buildAssemblyArguments(
   outputPath: string,
   musicPath?: string,
   timeline: Timeline = getTimeline(),
+  heroAudioPath?: string,
 ): string[] {
   if (shotPaths.length !== timeline.shotIds.length) {
     throw new MovieError("INVALID_RENDER_INPUT", "Assembly requires all planned normalized shots.");
@@ -77,16 +100,30 @@ export function buildAssemblyArguments(
   const args = [...common];
   for (const shotPath of shotPaths) args.push(...localInput, "-i", mediaCommandPath(shotPath));
   if (musicPath) args.push(...localInput, "-stream_loop", "-1", "-i", mediaCommandPath(musicPath));
+  if (heroAudioPath) args.push(...localInput, "-i", mediaCommandPath(heroAudioPath));
   let filter = shotPaths.map((_, index) => `[${index}:v:0]`).join("")
     + `concat=n=${shotPaths.length}:v=1:a=0[v]`;
-  if (musicPath) {
-    filter += `;[${shotPaths.length}:a:0]aresample=48000,atrim=duration=${timeline.durationSeconds},asetpts=PTS-STARTPTS,`
-      + `volume=0.22,afade=t=in:st=0:d=0.5,afade=t=out:st=${timeline.durationSeconds - 2}:d=2[a]`;
-  }
+  const audio = audioFilters(musicPath ? shotPaths.length : undefined,
+    heroAudioPath ? shotPaths.length + Number(Boolean(musicPath)) : undefined, timeline);
+  if (audio.length) filter += `;${audio.join(";")}`;
   args.push("-filter_complex", filter, "-map", "[v]");
-  if (musicPath) args.push("-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2");
+  if (audio.length) args.push("-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2");
   else args.push("-an");
   args.push("-sn", "-dn", "-frames:v", String(timeline.durationSeconds * 24),
     "-t", String(timeline.durationSeconds), ...encoding, mediaCommandPath(outputPath));
   return args;
+}
+
+/** Copy the existing video stream unchanged and replace only its soundtrack. */
+export function buildAudioRestorationArguments(
+  moviePath: string, heroAudioPath: string, outputPath: string, timeline: Timeline = getTimeline(),
+): string[] {
+  return [
+    ...common, ...localInput, "-i", mediaCommandPath(moviePath),
+    ...localInput, "-i", mediaCommandPath(heroAudioPath),
+    "-filter_complex", audioFilters(undefined, 1, timeline).join(";"),
+    "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+    "-ar", "48000", "-ac", "2", "-sn", "-dn", "-t", String(timeline.durationSeconds),
+    "-movflags", "+faststart", "-map_metadata", "-1", "-map_chapters", "-1", mediaCommandPath(outputPath),
+  ];
 }

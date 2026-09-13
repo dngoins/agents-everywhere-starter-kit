@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile, mkdtemp, readdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { AdBriefSchema, DEMO_PRODUCT } from "../src/contracts/index.js";
@@ -15,9 +14,12 @@ import { createMockBriefProvider } from "../src/providers/mock.js";
 import type { BriefInput } from "../src/providers/interfaces.js";
 
 const signal = () => new AbortController().signal;
+const syntheticMetadata = { provenance: "mock_fixture", durationSeconds: 1 } as const;
 async function cleanupDirectory(t: TestContext) {
-  const directory = await mkdtemp(join(tmpdir(), "magicpitch-provider-"));
-  t.after(() => rm(directory, { recursive: true }));
+  const artifacts = join(process.cwd(), "artifacts");
+  await mkdir(artifacts, { recursive: true });
+  const directory = await mkdtemp(join(artifacts, "provider-test-"));
+  t.after(() => rm(directory, { recursive: true, maxRetries: 10, retryDelay: 300 }));
   return directory;
 }
 function input(): BriefInput {
@@ -56,7 +58,7 @@ test("OpenAI invalid output fails unless labeled demo fallback is explicitly sel
   await assert.rejects(createOpenAIBriefProvider("fake", "test").create(source, signal()), ProviderFailure);
   const providers = createProviders(readConfig({
     BRIEF_PROVIDER: "openai", OPENAI_API_KEY: "fake", MODEL: "test", ALLOW_DEMO_FALLBACKS: "true",
-  }), new Uint8Array());
+  }), new Uint8Array(), syntheticMetadata);
   const fallback = await providers.briefProvider.create(source, signal());
   assert.equal(fallback.provenance, "mock");
 });
@@ -96,7 +98,7 @@ test("Exa failure is an error by default and explicit unavailable context when f
   await assert.rejects(createExaProfileProvider("fake").enrich(source, signal()), ProviderFailure);
   const providers = createProviders(readConfig({
     PROFILE_PROVIDER: "exa", EXA_API_KEY: "fake", ALLOW_DEMO_FALLBACKS: "true",
-  }), new Uint8Array());
+  }), new Uint8Array(), syntheticMetadata);
   const profile = await providers.profileProvider.enrich(source, signal());
   assert.equal(profile.provenance, "unavailable");
   assert.ok(profile.warnings.length);

@@ -73,7 +73,7 @@ function fixture(enableHero = false) {
     },
   };
   return {
-    services, stages, warnings, checkpoints, result, get videoCalls() { return videoCalls; },
+    services, stages, warnings, checkpoints, result, job, plan, frames, get videoCalls() { return videoCalls; },
     run: () => executeMovie(job, context, async patch => { checkpoints.push(patch); },
       { dataDir: "unused", imageModel: "test", veoModel: "test" }, services),
   };
@@ -98,4 +98,70 @@ test("renderer preflight fails before a paid reference service runs", async () =
   sample.services.renderer.ready = async () => ({ available: false, message: "FFmpeg missing" });
   sample.services.references.extract = async () => { assert.fail("Must not make a paid call"); };
   await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "RENDERER_UNAVAILABLE");
+});
+
+test("OpenAI hybrid requires a genuine Sora clip and cannot fall back to still-image motion", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "openai-sora";
+  sample.plan.videoProvider = "openai-sora";
+  let rendered = false;
+  sample.services.renderer.render = async () => { rendered = true; return sample.result; };
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "ANIMATION_REQUIRED");
+  assert.equal(rendered, false);
+});
+
+test("approved stills and the Sora animation are both required in the final hybrid output", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "openai-sora";
+  sample.plan.videoProvider = "openai-sora";
+  const clip = { assetId: randomUUID(), shotId: "shot_03" as const, provider: "OpenAI Sora" as const, model: "sora-2", operationId: "video_test" };
+  sample.services.video.generate = async input => {
+    assert.ok(input.frames.every(frame => frame.continuity.verdict === "PASS"));
+    assert.equal(input.plan.videoProvider, "openai-sora");
+    return clip;
+  };
+  sample.services.renderer.render = async input => {
+    assert.equal(input.frames.length, 4);
+    assert.deepEqual(input.hero, clip);
+    return { ...sample.result, mode: "hybrid-video" };
+  };
+  assert.equal((await sample.run()).mode, "hybrid-video");
+  assert.deepEqual(sample.checkpoints.at(-1), { hero: clip });
+});
+
+test("an existing Sora operation is resumed, while uncertain untracked submissions fail closed", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "openai-sora";
+  sample.plan.videoProvider = "openai-sora";
+  sample.job.heroAttempted = true;
+  sample.services.video.generate = async () => assert.fail("Untracked submissions must not be repeated");
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "SORA_SUBMISSION_UNCERTAIN");
+  sample.job.operations.push({ provider: "OpenAI Sora", id: "video_existing" });
+  sample.services.video.generate = async input => {
+    assert.equal(input.operationId, "video_existing");
+    throw new MovieError("SORA_PENDING", "Existing operation still running");
+  };
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "SORA_PENDING");
+});
+
+test("explicit Veo selection fails rather than completing a slideshow when animation is unavailable", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "google-veo";
+  sample.plan.videoProvider = "google-veo";
+  sample.services.renderer.render = async () => assert.fail("Required animation must not fall back to stills");
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "ANIMATION_REQUIRED");
+});
+
+test("explicit Veo selection combines an actual provider clip with approved stills", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "google-veo";
+  sample.plan.videoProvider = "google-veo";
+  const clip = { assetId: randomUUID(), shotId: "shot_03" as const, provider: "Google Veo" as const, model: "veo-3.1-generate-preview" };
+  sample.services.video.generate = async () => clip;
+  sample.services.renderer.render = async input => {
+    assert.deepEqual(input.hero, clip);
+    assert.equal(input.frames.length, 4);
+    return { ...sample.result, mode: "hybrid-video" };
+  };
+  assert.equal((await sample.run()).mode, "hybrid-video");
 });

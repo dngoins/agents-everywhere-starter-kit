@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { jobSchema, retryRequestSchema, MovieError, type JobRequest, type MovieJob, type ProductReference, type RetryRequest } from "../domain";
+import { frameDecisionRequestSchema, jobSchema, productionModeOf, retryRequestSchema, MovieError, type FrameDecisionRequest, type JobRequest, type MovieJob, type ProductReference, type RetryRequest, type StoryboardFrame } from "../domain";
 import type { Readiness } from "../domain/http";
 import { atomicWrite, isMissing, processAlive, readJson, withDiskLock } from "../server/files";
 import type { LocalMediaRepository } from "../server/media";
@@ -109,7 +109,8 @@ export class JobStore {
     const job = await this.getOwned(id, ownerId);
     const index = job.retries?.findIndex(retry => retry.idempotencyKey === request.idempotency_key) ?? -1;
     if (index < 0) return null;
-    if (job.retries![index].expectedAttempt !== request.expected_attempt) {
+    if (job.retries![index].expectedAttempt !== request.expected_attempt ||
+        job.retries![index].productionMode !== request.production_mode) {
       throw new MovieError("IDEMPOTENCY_CONFLICT", "This retry key was used with a different attempt. Reuse the original retry request.", 409);
     }
     return { job, attempt: index + 1 };
@@ -135,25 +136,91 @@ export class JobStore {
       });
       if (claimed) throw new MovieError("JOB_ACTIVE", "The previous worker is still finishing. Wait briefly and retry the same request.", 409);
       validateSavedPlan(job);
+      if (request.production_mode === "movie-first" && job.request.video_provider) {
+        throw new MovieError("ANIMATION_REQUIRED", "A generated-video movie cannot silently switch to animated stills. Create a separate image-only take explicitly.", 409);
+      }
+      if (request.production_mode) job.productionMode = request.production_mode;
       await verify(job);
+      return this.requeue(job, request);
+    });
+  }
+
+  private async requeue(job: MovieJob, request: RetryRequest): Promise<{ job: MovieJob; attempt: number }> {
+    const at = new Date().toISOString();
+    job.retries = [...(job.retries ?? []), {
+      idempotencyKey: request.idempotency_key, expectedAttempt: request.expected_attempt,
+      requestedAt: at, previousError: job.error,
+      ...(request.production_mode ? { productionMode: request.production_mode } : {}),
+    }];
+    job.status = "RECEIVED";
+    job.updatedAt = at;
+    job.error = null;
+    job.storyboardLocked = false;
+    if (productionModeOf(job) !== "movie-first") job.result = null;
+    job.events.push({
+      at, stage: "RECEIVED", provider: null, shotId: null,
+      message: productionModeOf(job) === "movie-first"
+        ? "Movie-first production requested. Keeping the plan and usable visuals; storyboard images will be extracted after encoding."
+        : "Explicit retry accepted. Keeping the director plan and approved shots; only unfinished work will run.",
+    });
+    await this.write(job);
+    await atomicWrite(this.queue(job.id, "pending"), JSON.stringify({ jobId: job.id }));
+    return { job, attempt: job.retries.length };
+  }
+
+  async decideFrame(
+    id: string, ownerId: string, assetId: string, input: FrameDecisionRequest,
+    verifyFrame: (job: MovieJob, frame: StoryboardFrame) => Promise<void>,
+    verifyResume: (job: MovieJob) => Promise<void>,
+  ): Promise<MovieJob> {
+    const request = frameDecisionRequestSchema.parse(input);
+    return this.transaction(async () => {
+      const job = await this.getOwned(id, ownerId);
+      const previous = job.designerDecisions?.find(item => item.request.idempotency_key === request.idempotency_key);
+      if (previous) {
+        if (previous.assetId !== assetId || canonical(previous.request) !== canonical(request)) {
+          throw new MovieError("IDEMPOTENCY_CONFLICT", "This designer-decision key was used for different input.", 409);
+        }
+        return job;
+      }
+      if (request.expected_revision !== (job.designerDecisions?.length ?? 0) ||
+          request.expected_attempt !== (job.retries?.length ?? 0)) {
+        throw new MovieError("STALE_REVIEW", "The movie or designer decisions changed. Refresh before choosing a frame.", 409);
+      }
+      const reviewing = ["STORYBOARDING", "VALIDATING"].includes(job.status) && !job.storyboardLocked;
+      if ((!reviewing && job.status !== "FAILED") || job.result || !job.plan || !job.character) {
+        throw new MovieError("REVIEW_LOCKED", "Designer decisions are available during storyboard review or after a failed attempt, not once video rendering is locked.", 409);
+      }
+      const frame = job.frames.find(item => item.assetId === assetId);
+      if (!frame || frame.source === "extracted" || !job.plan.shots.some(shot => shot.id === frame.shotId)) {
+        throw new MovieError("FRAME_NOT_FOUND", "This movie does not contain that generated storyboard frame.", 404);
+      }
+      if (frame.shotId === job.plan.heroShotId && (job.hero || job.heroAttempted)) {
+        throw new MovieError("HERO_LOCKED", "The hero video has already been attempted from its reference. Create a new take to change that reference.", 409);
+      }
+      await verifyFrame(job, frame);
       const at = new Date().toISOString();
-      job.retries = [...(job.retries ?? []), {
-        idempotencyKey: request.idempotency_key, expectedAttempt: request.expected_attempt,
-        requestedAt: at, previousError: job.error,
-      }];
-      job.status = "RECEIVED";
+      for (const candidate of job.frames.filter(item => item.shotId === frame.shotId)) {
+        candidate.designerDecision = {
+          action: candidate.assetId === assetId && request.action === "keep" ? "keep" : "regenerate",
+          note: request.note, at,
+        };
+      }
+      job.designerDecisions = [...(job.designerDecisions ?? []), { assetId, request, at }];
       job.updatedAt = at;
-      job.error = null;
-      job.result = null;
       job.events.push({
-        at, stage: "RECEIVED", provider: null, shotId: null,
-        message: "Explicit retry accepted. Keeping the director plan and approved shots; only unfinished work will run.",
+        at, stage: job.status, provider: "Designer", shotId: frame.shotId,
+        message: request.action === "keep" ? "Designer kept this image. The AI verdict is retained; use the selected image and continue." : "Designer requested a new image for this shot.",
       });
-      // The manifest includes the receipt and queue intent in one atomic write.
-      // claim/recoverInterrupted repair a missing pending marker after a crash.
+      if (request.resume && job.status === "FAILED") {
+        const claimed = await stat(this.queue(id, "claimed")).catch(error => { if (isMissing(error)) return null; throw error; });
+        if (claimed) throw new MovieError("JOB_ACTIVE", "The previous attempt is finishing. Wait briefly before continuing.", 409);
+        await verifyResume(job);
+        const key = `designer-${createHash("sha256").update(request.idempotency_key).digest("hex")}`;
+        return (await this.requeue(job, { idempotency_key: key, expected_attempt: request.expected_attempt })).job;
+      }
       await this.write(job);
-      await atomicWrite(this.queue(id, "pending"), JSON.stringify({ jobId: id }));
-      return { job, attempt: job.retries.length };
+      return job;
     });
   }
 
@@ -280,6 +347,7 @@ export class JobStore {
       const referenced = new Set(remaining.flatMap(other => [
         ...other.request.customer_reference_asset_ids, ...other.product.referenceImages.map(ref => ref.assetId),
         ...other.frames.map(frame => frame.assetId), ...(other.character?.sourceImages.map(ref => ref.assetId) ?? []),
+        ...(other.sceneFrames?.map(frame => frame.assetId) ?? []),
         ...(other.hero ? [other.hero.assetId] : []), ...(other.result ? [other.result.assetId] : []),
       ]));
       for (const asset of await media.listAssets()) {

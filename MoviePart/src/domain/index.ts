@@ -6,6 +6,14 @@ export const storyFormatSchema = z.enum(["four-shot", "six-shot"]);
 export type StoryFormat = z.infer<typeof storyFormatSchema>;
 export const heroModeSchema = z.enum(["LIKENESS", "POV", "PERSONALIZED"]);
 export type HeroMode = z.infer<typeof heroModeSchema>;
+export const productionModeSchema = z.enum(["reviewed-storyboard", "movie-first"]);
+export type ProductionMode = z.infer<typeof productionModeSchema>;
+export const videoProviderSchema = z.enum(["openai-sora", "google-veo"]);
+export type VideoProviderId = z.infer<typeof videoProviderSchema>;
+export const isOpenAIHero = (plan: { videoProvider?: VideoProviderId; heroShotId: string }, shotId: string) =>
+  plan.videoProvider === "openai-sora" && plan.heroShotId === shotId;
+export const productionModeOf = (job: { productionMode?: ProductionMode; request: { production_mode?: ProductionMode } }): ProductionMode =>
+  job.productionMode ?? job.request.production_mode ?? "reviewed-storyboard";
 export const shotIdSchema = z.enum(["shot_01", "shot_02", "shot_03", "shot_04", "shot_05", "shot_06"]);
 export type ShotId = z.infer<typeof shotIdSchema>;
 export const resolveStoryFormat = (format?: StoryFormat): StoryFormat => format ?? "four-shot";
@@ -175,6 +183,7 @@ export const moviePlanSchema = directorOutputSchema.extend({
   durationSeconds: z.number().int().positive(),
   aspectRatio: z.literal("16:9"),
   heroShotId: z.enum(["shot_03", "shot_04"]),
+  videoProvider: videoProviderSchema.optional(),
 }).strict().superRefine((plan, ctx) => {
   const timeline = getTimeline(plan.storyFormat, plan.templateId);
   if (plan.durationSeconds !== timeline.durationSeconds || plan.heroShotId !== timeline.heroShotId ||
@@ -191,24 +200,42 @@ export const continuitySchema = z.object({
   confidence: z.number().min(0).max(1),
 }).strict();
 export type ContinuityResult = z.infer<typeof continuitySchema>;
+export const designerDecisionSchema = z.object({
+  action: z.enum(["keep", "regenerate"]),
+  note: z.string().max(1000),
+  at: z.iso.datetime(),
+}).strict();
+export const frameDecisionRequestSchema = z.object({
+  action: z.enum(["keep", "regenerate"]),
+  note: z.string().trim().max(1000).default(""),
+  idempotency_key: z.string().min(8).max(120),
+  expected_revision: z.number().int().nonnegative(),
+  expected_attempt: z.number().int().nonnegative(),
+  resume: z.boolean().default(false),
+}).strict();
+export type FrameDecisionRequest = z.infer<typeof frameDecisionRequestSchema>;
 export const storyboardFrameSchema = z.object({
   shotId: z.string(),
   assetId: z.uuid(),
-  continuity: continuitySchema,
+  continuity: continuitySchema.extend({ verdict: z.enum(["PASS", "RETRY", "REJECT", "NOT_REVIEWED"]) }).strict(),
   provider: z.string(),
   model: z.string(),
+  source: z.enum(["generated", "extracted"]).optional(),
+  extractedAtSeconds: z.number().nonnegative().optional(),
+  designerDecision: designerDecisionSchema.optional(),
 }).strict();
 export type StoryboardFrame = z.infer<typeof storyboardFrameSchema>;
 export const videoArtifactSchema = z.object({
   assetId: z.uuid(),
   shotId: z.enum(["shot_03", "shot_04"]),
-  provider: z.literal("Google Veo"),
+  provider: z.enum(["Google Veo", "OpenAI Sora"]),
   model: z.string(),
+  operationId: z.string().optional(),
 }).strict();
 export type VideoArtifact = z.infer<typeof videoArtifactSchema>;
 export const renderResultSchema = z.object({
   assetId: z.uuid(),
-  mode: z.enum(["storyboard-motion", "hybrid-video"]),
+  mode: z.enum(["storyboard-motion", "hybrid-video", "image-motion"]),
   durationSeconds: z.number(),
   hasAudio: z.boolean(),
 }).strict();
@@ -225,9 +252,14 @@ export const jobRequestSchema = z.object({
   preferred_template: templateIdSchema.default("DREAM_ROUTE"),
   story_format: storyFormatSchema.optional(),
   hero_mode: heroModeSchema.optional(),
+  production_mode: productionModeSchema.optional(),
   enable_hero_video: z.boolean().default(false),
+  video_provider: videoProviderSchema.optional(),
   idempotency_key: z.string().min(8).max(120),
 }).strict().superRefine((value, ctx) => {
+  if (value.video_provider && (!value.enable_hero_video || value.production_mode === "movie-first")) {
+    ctx.addIssue({ code: "custom", message: "A selected video provider requires reviewed storyboards and an enabled hero video." });
+  }
   if (new Set(value.customer_reference_asset_ids).size !== value.customer_reference_asset_ids.length) {
     ctx.addIssue({ code: "custom", message: "Customer photos must be unique." });
   }
@@ -242,13 +274,14 @@ export const jobRequestSchema = z.object({
 export type JobRequest = z.infer<typeof jobRequestSchema>;
 export const jobStatusSchema = z.enum([
   "RECEIVED", "BUILDING_REFERENCES", "DIRECTING", "STORYBOARDING",
-  "VALIDATING", "GENERATING_HERO", "ASSEMBLING", "COMPLETED", "FAILED",
+  "VALIDATING", "GENERATING_HERO", "ASSEMBLING", "EXTRACTING_STORYBOARD", "COMPLETED", "FAILED",
 ]);
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 export const jobErrorSchema = z.object({ code: z.string(), message: z.string(), stage: jobStatusSchema }).strict();
 export const retryRequestSchema = z.object({
   idempotency_key: z.string().min(8).max(120),
   expected_attempt: z.number().int().min(0).max(1_000_000),
+  production_mode: z.literal("movie-first").optional(),
 }).strict();
 export type RetryRequest = z.infer<typeof retryRequestSchema>;
 export const retryRecordSchema = z.object({
@@ -256,6 +289,7 @@ export const retryRecordSchema = z.object({
   expectedAttempt: z.number().int().nonnegative(),
   requestedAt: z.iso.datetime(),
   previousError: jobErrorSchema.nullable(),
+  productionMode: productionModeSchema.optional(),
 }).strict();
 export const jobEventSchema = z.object({
   at: z.iso.datetime(),
@@ -279,11 +313,19 @@ export const jobSchema = z.object({
   character: characterSchema.nullable(),
   plan: moviePlanSchema.nullable(),
   frames: z.array(storyboardFrameSchema),
+  sceneFrames: z.array(storyboardFrameSchema).optional(),
+  productionMode: productionModeSchema.optional(),
   hero: videoArtifactSchema.nullable(),
   heroAttempted: z.boolean().optional(),
   result: renderResultSchema.nullable(),
   operations: z.array(z.object({ provider: z.string(), id: z.string() })),
   retries: z.array(retryRecordSchema).optional(),
+  designerDecisions: z.array(z.object({
+    assetId: z.uuid(),
+    request: frameDecisionRequestSchema,
+    at: z.iso.datetime(),
+  }).strict()).optional(),
+  storyboardLocked: z.boolean().optional(),
 }).strict();
 export type MovieJob = z.infer<typeof jobSchema>;
 

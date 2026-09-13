@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { z } from "zod";
-import { consentSchema, jobRequestSchema, retryRequestSchema, MovieError, type AssetRecord, type MovieJob } from "../domain";
+import { consentSchema, frameDecisionRequestSchema, jobRequestSchema, productionModeOf, retryRequestSchema, MovieError, type AssetRecord, type MovieJob } from "../domain";
 import type { AssetView, ConfigView, JobView, Readiness } from "../domain/http";
 import type { MovieConfig } from "../domain/services";
 import { JobStore } from "../jobs/store";
@@ -13,7 +13,7 @@ import { loadConfig } from "./config";
 import { LocalMediaRepository } from "./media";
 import { boundedBody, uploadPhotos } from "./uploads";
 import { uploadProductReferences } from "./product-upload";
-import { retrySummary, validateRetryAssets } from "../jobs/retry";
+import { retrySummary, validateApprovedFrame, validateRetryAssets } from "../jobs/retry";
 
 const privateHeaders = {
   "cache-control": "private, no-store",
@@ -39,12 +39,18 @@ export function assetView(asset: AssetRecord): AssetView {
 
 export function jobView(job: MovieJob): JobView {
   const retry = retrySummary(job);
+  const movieFirst = productionModeOf(job) === "movie-first";
+  const requiredVideoPresent = job.request.video_provider === "openai-sora" ? job.hero?.provider === "OpenAI Sora"
+    : job.request.video_provider === "google-veo" ? job.hero?.provider === "Google Veo" : true;
   return {
     id: job.id, sessionId: job.request.session_id, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt,
     events: job.events, warnings: job.warnings, error: job.error, character: job.character, plan: job.plan,
-    frames: job.frames, hero: job.hero,
-    result: job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
+    frames: movieFirst ? job.frames.filter(frame => frame.source === "extracted") : job.frames, hero: job.hero,
+    productionMode: productionModeOf(job),
+    result: !requiredVideoPresent ? null : movieFirst ? job.result : job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
     retry,
+    reviewRevision: job.designerDecisions?.length ?? 0,
+    designerReviewAllowed: !!job.plan && !job.result && (job.status === "FAILED" || !job.storyboardLocked && ["STORYBOARDING", "VALIDATING"].includes(job.status)),
   };
 }
 
@@ -95,10 +101,34 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
         : "Set OPENAI_API_KEY, OPENAI_VISION_MODEL and OPENAI_DIRECTOR_MODEL before generating a movie.",
     },
     veo: {
-      available: !!config.googleKey,
-      message: config.googleKey ? "Optional Veo enhancement is configured; access is checked at generation time." : "Optional Veo is not configured; storyboard-motion remains available.",
+      available: !!config.googleKey && /^veo-3\.1-(?:fast-)?generate(?:-preview)?$/.test(config.veoModel),
+      message: config.googleKey ? "Google Veo is configured; model access and quota are checked when animation starts." : "Set GEMINI_API_KEY in MoviePart/.env for genuine Google Veo animation. OpenAI credentials cannot be used for this provider.",
+    },
+    openaiVideo: {
+      available: !!config.openaiKey && ["sora-2", "sora-2-pro"].includes(config.videoModel ?? "sora-2-pro"),
+      message: "Sora 2 Pro generates car-only animation after storyboard approval; human-face inputs are not supported. OpenAI schedules the Sora API shutdown for September 24, 2026.",
     },
   });
+
+  const verifyRecovery = async (job: MovieJob) => {
+    const summary = retrySummary(job);
+    if (job.request.video_provider === "google-veo" && !job.hero && !providers().veo.available) {
+      throw new MovieError("VEO_NOT_READY", "Configure the Google video API key before retrying this animation-required movie.", 503);
+    }
+    if (summary.remainingShots && !(config.openaiKey && config.visionModel && config.imageModel)) {
+      throw new MovieError("OPENAI_NOT_READY", "Configure OpenAI image generation and vision review before retrying unfinished shots.", 503);
+    }
+    const [renderer, worker] = await Promise.all([rendererReady(), store.workerReadiness()]);
+    if (!renderer.available) throw new MovieError("RENDERER_NOT_READY", renderer.message, 503);
+    if (!worker.available) throw new MovieError("WORKER_NOT_READY", worker.message, 503);
+    for (const assetId of job.request.customer_reference_asset_ids) {
+      await media.requireOwned(assetId, job.ownerId);
+      if (!consentSchema.safeParse(await media.getConsent(assetId)).success) {
+        throw new MovieError("CONSENT_REQUIRED", "The original customer image consent is not available.", 409);
+      }
+    }
+    await validateRetryAssets(job, media);
+  };
 
   return {
     config: guarded(async request => {
@@ -151,6 +181,12 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
       const product = await catalog.getProduct(input.product_id);
       const openai = providers().openai;
       if (!openai.available) throw new MovieError("OPENAI_NOT_READY", openai.message, 503);
+      if (input.video_provider === "openai-sora" && !providers().openaiVideo?.available) {
+        throw new MovieError("OPENAI_VIDEO_NOT_READY", "Configure OpenAI video access and OPENAI_VIDEO_MODEL=sora-2-pro for genuine animation.", 503);
+      }
+      if (input.video_provider === "google-veo" && !providers().veo.available) {
+        throw new MovieError("VEO_NOT_READY", "Set GEMINI_API_KEY and a supported VEO_MODEL before requesting Google-generated animation.", 503);
+      }
       const [renderer, worker] = await Promise.all([rendererReady(), store.workerReadiness()]);
       if (!renderer.available) throw new MovieError("RENDERER_NOT_READY", renderer.message, 503);
       if (!worker.available) throw new MovieError("WORKER_NOT_READY", worker.message, 503);
@@ -177,26 +213,29 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
         job_id: previous.job.id, status: previous.job.status,
         status_url: `/api/movie-jobs/${id}`, retry_attempt: previous.attempt,
       }, 202);
-      const result = await store.retryOwned(id, ownerId, input, async job => {
-        const summary = retrySummary(job);
-        if (summary.remainingShots && !(config.openaiKey && config.visionModel && config.imageModel)) {
-          throw new MovieError("OPENAI_NOT_READY", "Configure OpenAI image generation and vision review before retrying unfinished shots.", 503);
-        }
-        const [renderer, worker] = await Promise.all([rendererReady(), store.workerReadiness()]);
-        if (!renderer.available) throw new MovieError("RENDERER_NOT_READY", renderer.message, 503);
-        if (!worker.available) throw new MovieError("WORKER_NOT_READY", worker.message, 503);
-        for (const assetId of job.request.customer_reference_asset_ids) {
-          await media.requireOwned(assetId, ownerId);
-          if (!consentSchema.safeParse(await media.getConsent(assetId)).success) {
-            throw new MovieError("CONSENT_REQUIRED", "The original customer image consent is not available.", 409);
-          }
-        }
-        await validateRetryAssets(job, media);
-      });
+      const result = await store.retryOwned(id, ownerId, input, verifyRecovery);
       return json({
         job_id: result.job.id, status: result.job.status,
         status_url: `/api/movie-jobs/${id}`, retry_attempt: result.attempt,
       }, 202);
+    }),
+    decideFrame: guarded(async (request, id: string, assetId: string) => {
+      const { ownerId } = await auth.authenticate(request, { mutation: true });
+      if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+        throw new MovieError("INVALID_CONTENT_TYPE", "Send the designer decision as application/json.", 415);
+      }
+      const bytes = await boundedBody(request, 8192);
+      let parsed: unknown;
+      try { parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch {
+        throw new MovieError("INVALID_JSON", "The designer decision must be valid JSON.", 400);
+      }
+      const input = frameDecisionRequestSchema.parse(parsed);
+      const job = await store.decideFrame(id, ownerId, assetId, input, async (current, frame) => {
+        await validateApprovedFrame(frame, {
+          jobId: current.id, ownerId, media, signal: request.signal,
+        }, false);
+      }, verifyRecovery);
+      return json({ job: jobView(job) });
     }),
     deleteJob: guarded(async (request, id: string) => {
       const { ownerId } = await auth.authenticate(request, { mutation: true });

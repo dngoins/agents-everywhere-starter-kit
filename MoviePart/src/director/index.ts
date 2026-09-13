@@ -3,7 +3,7 @@ import { z } from "zod";
 import { characterSchema, getDirectorOutputSchema, getTimeline, MovieError, productSchema, profileSchema, resolveHeroMode, resolveStoryFormat, templateSchema, validatePlan, type MoviePlan } from "../domain";
 import type { DirectorService, MovieConfig } from "../domain/services";
 import { structured, type OpenAITransport } from "../providers/openai/client";
-import { getWardrobeLock, heroModeInstructions, loadOriginals, visionImages } from "../references";
+import { CHARACTER_PRESENTATION_INSTRUCTIONS, getWardrobeLock, heroModeInstructions, loadOriginals, visionImages, PRODUCT_ONLY_HERO_INSTRUCTIONS } from "../references";
 import { getTemplate } from "../templates";
 
 export const DIRECTOR_INSTRUCTIONS = `You direct one original, coherent automotive advertisement.
@@ -47,10 +47,11 @@ export function createDirectorService(config: MovieConfig, transport: OpenAITran
           model: config.directorModel || "gpt-4.1",
           name: "movie_director",
           schema: getDirectorOutputSchema(storyFormat, template.id),
-          instructions: `${DIRECTOR_INSTRUCTIONS}\n${heroModeInstructions(heroMode)}`,
+          instructions: `${DIRECTOR_INSTRUCTIONS}\n${heroModeInstructions(heroMode)}\n${CHARACTER_PRESENTATION_INSTRUCTIONS}${input.videoProvider === "openai-sora" ? `\nFor ${timeline.heroShotId} ONLY, this policy overrides protagonist visibility: ${PRODUCT_ONLY_HERO_INSTRUCTIONS} Keep the customer in the other still shots, never the animated hero.` : ""}`,
           content: [{ type: "input_text", text: JSON.stringify({
             ...(heroMode === "LIKENESS" ? { character } : {}),
             heroMode, product, profile, template, wardrobeLock, timeline,
+            ...(input.videoProvider === "openai-sora" ? { productOnlyHeroShotId: timeline.heroShotId } : {}),
           }) }, ...visionImages(originals)],
         }, context);
         if (output.wardrobe !== wardrobeLock) {
@@ -60,6 +61,7 @@ export function createDirectorService(config: MovieConfig, transport: OpenAITran
           ...output, id: randomUUID(), characterId: character.id, productId: product.id,
           templateId: template.id, templateVersion: template.version, referenceVersion: character.version,
           storyFormat, heroMode, durationSeconds: timeline.durationSeconds, aspectRatio: "16:9", heroShotId: timeline.heroShotId,
+          ...(input.videoProvider ? { videoProvider: input.videoProvider } : {}),
         };
         return validatePlan(plan, profile);
       } catch (error) {

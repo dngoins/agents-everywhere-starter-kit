@@ -18,6 +18,26 @@ The kiosk's photo control uses the tablet/browser's file or camera picker after 
 
 ## The workflow
 
+The studio defaults to **reviewed storyboards with required Google Veo animation**. Astra handles vision/direction, Flare creates the stills, and Veo creates an eight-second moving clip after approval. Pan/zoom animation of a photograph does not satisfy the animation requirement.
+
+`davici.ai` is a parked domain; the similarly named `davinci.ai` is a media platform, but a supported developer API has not been verified. No customer images or credentials are sent there. The supplied prerecorded example can be used for the default demo independently of a generation provider.
+
+The explicitly selected **Image motion only** alternative creates an animated-image MP4 and extracts its storyboard afterward. It is not genuine video-model footage; existing image-motion results retain that label.
+
+```mermaid
+flowchart LR
+    Plan["Saved or new movie plan"]
+    Visuals["Reuse visuals or generate missing scenes once"]
+    Movie["Encode and validate the MP4"]
+    Storyboard["Extract actual movie frames"]
+    Playback["Play movie and inspect extracted storyboard"]
+    Plan --> Visuals --> Movie --> Storyboard --> Playback
+```
+
+No image is labeled continuity-approved merely to make this path succeed. Extracted frames carry `source: "extracted"`, their actual timestamps, and `NOT_REVIEWED` continuity metadata. Invalid media and provider errors still fail explicitly. If extraction fails after encoding, the movie is retained and available; retry extracts the storyboard without paying to regenerate scenes.
+
+The default **Review every storyboard shot first** workflow requires visual approval before video generation and rendering:
+
 ```mermaid
 flowchart TD
     Mode{"Explicit hero mode"}
@@ -110,15 +130,45 @@ Open **http://127.0.0.1:3200**. The configuration panel identifies missing setup
 
 The worker runs separately from Next requests and persists stages/artifacts on disk. Refreshing the browser does not resubmit a movie. A worker interruption is surfaced rather than blindly repeating potentially billable operations.
 
+### Background production during the showroom conversation
+
+The robot should keep talking with the customer while Movie Magic works. Start a movie once a consented reference, confirmed car and a small useful set of preferences are available; freeze those inputs for that job rather than restarting it after each conversational detail. A ready result should prompt the robot to ask permission to show it, not autoplay over the conversation.
+
+**About two minutes is an advisory target, not a deadline.** The studio shows elapsed time and continues working beyond it. Passing two minutes does not cancel a generation, weaken a safety check, or automatically substitute the prerecorded demo.
+
+Runtime defaults favor efficient iteration:
+
+```dotenv
+CONTINUITY_POLICY=practical
+STORYBOARD_MAX_ATTEMPTS=8
+STORYBOARD_CONCURRENCY=2
+```
+
+Practical review accepts small clothing-texture, prop-placement and background differences when the subject, car and core scene remain coherent. Major identity/product errors and unsafe content still fail. Corrective retries vary camera/framing or simplify the composition without changing the subject, vehicle, wardrobe, story beat or approved references. Two shot tasks can run concurrently, but output remains in planned order. The configurable per-shot cap prevents uncontrolled paid loops; failed work remains available for a designer decision or explicit retry.
+
+Newly generated character shots use a disclosed, subtly slimmer silhouette while preserving facial identity, hairstyle and clothing. The original reference photographs and canonical observations remain unchanged. Designer-kept images are not restyled or regenerated.
+
+### Designer decisions: choose which images to keep
+
+Each generated storyboard card includes a candidate selector, optional designer note, **Keep this image**, and **Regenerate this shot**. Make choices across any shots, then select **Continue with my selections** on a paused/failed movie. Keeping an image does not itself queue a new generation, and no image is chosen for the designer automatically.
+
+Keep is an authoritative creative decision: the engine uses that exact image and moves on, even if its AI verdict was `RETRY`. The image is labeled **Kept by designer**, not falsely relabeled AI `PASS`. Regenerate retains the old evidence but invalidates previous approvals for that shot and passes the designer note to the next attempt. Both decisions are owner-authorized, revision-checked and idempotent.
+
+Decisions can be made during storyboard generation/review or after an attempt fails. A call already in flight may finish; the engine checks for designer decisions before another attempt. Before video/rendering begins, selected approvals are locked atomically, so the finished movie cannot race with an edit. Completed movies and already-submitted hero-video references cannot be modified in place.
+
+Designer approval cannot replace missing consent, accept an invalid/unowned media file, or bypass a video provider's own restrictions. Continuing unfinished generation may incur charges.
+
 ### Recover an incomplete movie
 
-If a shot fails generation or continuity review, the job stops with its director plan, references, approved frames, rejected candidates, and review reasons intact. The storyboard is labeled **incomplete**, not presented as a finished movie.
+If a shot fails generation or continuity review, the job stops with its director plan, references, approved frames, rejected candidates, and review reasons intact.
 
-Use **Retry failed and remaining shots** on that failed job to explicitly authorize more work. This keeps the same job ID, frozen brief, director plan, and approved images. The worker starts at the first unapproved shot, includes its latest review corrections, and continues through the missing shots. It does not rerun reference analysis or direction, and approved shots make no new image-generation or continuity-review requests.
+**Make movie from this plan** explicitly switches an eligible failed job to movie-first production. It reuses usable saved visuals, generates missing scenes once without continuity scoring, makes the MP4, then extracts its storyboard. It does not repeatedly regenerate a scene to satisfy a visual critic. Existing serious `REJECT` candidates are not reused; provider moderation and valid-media checks remain enforced. New missing-scene generation may incur API charges.
 
-Each click authorizes at most two new image submissions per unfinished shot, including a possible continuity correction. Further failure stops the job again while retaining every approval. New generation/review may incur charges. A repeated HTTP request with the same retry key is deduplicated; two callers cannot authorize the same retry attempt using stale state.
+The reviewed-mode API also supports **Retry failed and remaining shots** to explicitly authorize more review-driven work. This keeps the same job ID, frozen brief, director plan, and approved images. The worker starts at the first unapproved shot, includes its latest review corrections, and continues through the missing shots. It does not rerun reference analysis or direction, and approved shots make no new image-generation or continuity-review requests.
 
-If every shot already passed and assembly failed, the action is **Retry final assembly**. A saved hero clip is reused; an optional hero-video attempt already recorded is not automatically resubmitted. No final MP4 is published until every required storyboard shot is approved and final assembly succeeds.
+Each explicit retry uses the configured per-shot attempt budget (eight by default), including continuity corrections. Further failure stops the job again while retaining every AI or designer approval. New generation/review may incur charges. A repeated HTTP request with the same retry key is deduplicated; two callers cannot authorize the same retry attempt using stale state.
+
+For reviewed production, if every shot already passed and assembly failed, the API can **Retry final assembly**. A saved hero clip is reused; an optional hero-video attempt already recorded is not automatically resubmitted. Reviewed production requires every storyboard shot to pass; movie-first production requires complete usable scene media and a validated MP4, not continuity approval.
 
 Retry uses the saved movie settings, not edits in the creation form. Missing or corrupted approved files block recovery instead of silently charging for replacement. Restore those files or explicitly create a new take. Jobs that failed before saving a complete plan need a new take; active and completed jobs cannot be requeued by the retry endpoint.
 
@@ -138,16 +188,32 @@ The npm dependencies provide local `ffmpeg-static` and `ffprobe-static` binaries
 
 Optional `MOVIE_MUSIC_PATH` points to a local music file you have permission to use. Without it, the movie remains playable but has no audio, and the UI/manifest reports that explicitly. An audio cue in the director plan is not a generated sound effect.
 
-### Optional Veo enhancement
+### Google Veo animation
 
 ```dotenv
 GEMINI_API_KEY=your-private-key
 VEO_MODEL=veo-3.1-generate-preview
 ```
 
-Enable the hero option explicitly in the demo or set `enable_hero_video: true` in the API request. This sends the required approved references/frames to Google and may incur additional charges. If the enhancement is unavailable, rejected, unsuitable, or times out, an explicit warning accompanies a baseline storyboard-motion movie instead.
+The studio selects Google Veo by default. Configure `GEMINI_API_KEY` in the private `MoviePart\.env`, keep `VEO_MODEL=veo-3.1-generate-preview`, and restart the studio and worker. An OpenAI key cannot authenticate to Google.
 
-Never rely on video-provider access to obtain the baseline advertisement. Conversely, required image-generation or rendering failures are real failures, not silently substituted mock movies.
+New studio jobs send `enable_hero_video: true` and `video_provider: "google-veo"`. Approved hero start/end frames guide the eight-second generated clip. If Google access, quota, generation or validation fails, the job stops; **no still-only slideshow is substituted for a required animation**.
+
+Legacy API jobs that omit `video_provider` retain their explicitly optional hero behavior. Image-motion-only output remains a separately selected, clearly labeled mode. Google provider calls may incur charges and require the relevant account's model access.
+
+### Optional alternative: temporary OpenAI video adapter
+
+```dotenv
+OPENAI_VIDEO_MODEL=sora-2-pro
+```
+
+If explicitly selecting the temporary OpenAI adapter, `sora-2-pro` is the configured default for higher-quality, more expensive rendering; `sora-2` is the faster alternative. Both use the server-side `OPENAI_API_KEY`; a Google key is not needed. This does not select Sora automatically, and model-list access does not prove billing/quota or a completed video.
+
+The reviewed director plan makes its eight-second hero shot an **exterior car-only scene**, without visible people or human reflections. Customer likeness remains in the approved still shots. The OpenAI video API currently rejects human-face inputs and cannot generate real people, even when the photo owner consents. ChatGPT's web product may expose different capabilities; this application must follow the API restrictions. See [OpenAI's video guide](https://developers.openai.com/api/docs/guides/video-generation).
+
+The adapter checks the approved hero reference before submission, persists the Sora operation ID, polls with bounded waits, downloads the actual MP4, and validates it before assembly. A pending operation can be resumed by ID rather than submitting another paid video. Unknown acceptance, rejection, invalid video, or missing access is an explicit error. **No still-only fallback is allowed for an OpenAI hybrid request.**
+
+The current OpenAI SDK marks Sora's API as deprecated and scheduled to shut down **September 24, 2026**. This adapter is a short-term integration, not a promise of availability after that date. The provider boundary remains replaceable.
 
 ## API and ownership
 
@@ -161,6 +227,7 @@ The complete portable contract is [integration/contracts.ts](integration/contrac
 | `POST /api/movie-jobs` | Idempotent asynchronous submission; returns 202 |
 | `GET /api/movie-jobs/{jobId}` | Current status, artifacts, progress, warnings, and errors |
 | `POST /api/movie-jobs/{jobId}/retry` | Explicit, idempotent recovery using the saved plan and approved shots |
+| `POST /api/movie-jobs/{jobId}/frames/{assetId}/decision` | Designer keep/regenerate decision with optional note and continuation |
 | `GET /api/movie-assets/{assetId}` | Controlled images/video, including byte-range playback |
 | `DELETE /api/movie-jobs/{jobId}` | Explicit terminal-job cleanup |
 
@@ -189,7 +256,7 @@ The arrows describe distinct application paths, not interchangeable endpoints. T
 
 The kiosk pairs with a device token or joins an existing session from Damian's trusted bridge. It displays explicit consent, confirmed customer/preferences, a reviewable brief, real job state and authorized Blob playback. Result provenance distinguishes generated media, synthetic fixtures, and prerecorded fallback. `media_revealed` belongs to the actual playback event, not to the job becoming ready.
 
-The media service accepts authenticated, globally idempotent `POST /jobs`, returns acceptance before generation, exposes `GET /jobs/{providerJobId}`, and serves only same-base relative MP4 paths. `DELETE /jobs/by-key/{jobId}` must tombstone the key, stop renderer-held work and delete local participant assets before acknowledging cleanup. Dwight calls it after downloading the result as well as on cancellation/failure.
+The media service accepts authenticated, globally idempotent `POST /jobs`, returns acceptance before generation, exposes `GET /jobs/{providerJobId}`, and serves only same-base relative MP4 paths. `DELETE /jobs/by-key/{jobId}` must tombstone the key, stop renderer-held work and delete local participant assets before acknowledging cleanup. Dwight calls it after downloading the result as well as on cancellation/failure. This brief-based media service is separate from the creator studio's new Sora hybrid option; it is not automatically upgraded by selecting Sora in the studio.
 
 `demo-car-v1` is a synthetic concept brief, not a real Tesla catalog. Its scenes, on-screen copy, CTA and total duration are separate from the creator studio's four/six-shot templates. Agree a real product contract before presenting it as a real-customer product advertisement.
 

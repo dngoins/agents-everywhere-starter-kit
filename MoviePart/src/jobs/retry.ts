@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import sharp from "sharp";
-import { MovieError, resolveHeroMode, resolveStoryFormat, validatePlan, type MovieJob } from "../domain";
-import { selectStoryboardFrames } from "../domain/storyboard-state";
+import { MovieError, productionModeOf, resolveHeroMode, resolveStoryFormat, validatePlan, type MovieJob } from "../domain";
+import { isFrameApproved, selectStoryboardFrames } from "../domain/storyboard-state";
 import type { MediaRepository } from "../domain/services";
 import { getWardrobeLock, readImage } from "../references";
 import type { GenerationContext } from "../domain/services";
@@ -9,12 +9,14 @@ import type { MovieRetrySummary } from "../../integration/contracts";
 
 export function retrySummary(job: MovieJob): MovieRetrySummary {
   const frames = selectStoryboardFrames(job.frames, job.plan?.shots.map(shot => shot.id) ?? []);
-  const approvedShots = frames.filter(frame => frame.continuity.verdict === "PASS").length;
+  const approvedShots = frames.filter(isFrameApproved).length;
+  const usable = selectStoryboardFrames([...job.frames, ...(job.sceneFrames ?? [])].filter(frame => frame.source !== "extracted"), job.plan?.shots.map(shot => shot.id) ?? [])
+    .filter(frame => isFrameApproved(frame) || frame.designerDecision?.action !== "regenerate" && frame.continuity.verdict !== "REJECT").length;
   return {
     attempt: job.retries?.length ?? 0,
-    eligible: job.status === "FAILED" && !!job.plan && !!job.character && !job.result,
+    eligible: job.status === "FAILED" && !!job.plan && !!job.character && (!job.result || productionModeOf(job) === "movie-first"),
     approvedShots,
-    remainingShots: (job.plan?.shots.length ?? 0) - approvedShots,
+    remainingShots: (job.plan?.shots.length ?? 0) - (productionModeOf(job) === "movie-first" ? usable : approvedShots),
   };
 }
 
@@ -28,6 +30,7 @@ export function validateSavedPlan(job: MovieJob): void {
       job.product.id !== job.request.product_id || job.plan.templateId !== job.request.preferred_template ||
       resolveStoryFormat(job.plan.storyFormat) !== resolveStoryFormat(job.request.story_format) ||
       resolveHeroMode(job.plan.heroMode) !== mode ||
+      job.plan.videoProvider !== job.request.video_provider ||
       job.plan.referenceVersion !== job.character.version || job.plan.referenceVersion !== job.product.version ||
       job.plan.wardrobe !== getWardrobeLock(job.character, mode)) {
     throw new MovieError("INVALID_SAVED_PLAN", "The saved plan no longer matches this movie's immutable references. It cannot be silently replanned.", 409);
@@ -46,10 +49,11 @@ export function validateSavedPlan(job: MovieJob): void {
 export async function validateApprovedFrame(
   frame: ReturnType<typeof selectStoryboardFrames>[number],
   context: Pick<GenerationContext, "jobId" | "ownerId" | "media" | "signal">,
+  requireApproval = true,
 ): Promise<void> {
   context.signal.throwIfAborted();
   const asset = await context.media.getAsset(frame.assetId);
-  if (frame.continuity.verdict !== "PASS" || asset.kind !== "storyboard" ||
+  if ((requireApproval && !isFrameApproved(frame)) || asset.kind !== "storyboard" ||
       asset.ownerId !== context.ownerId || asset.jobId !== context.jobId || !asset.mime.startsWith("image/")) {
     throw new MovieError("SAVED_FRAME_UNAVAILABLE", `The approved ${frame.shotId} does not belong to this movie. No replacement was generated automatically.`, 409);
   }
@@ -68,6 +72,14 @@ export async function validateApprovedFrame(
 export async function validateRetryAssets(job: MovieJob, media: MediaRepository, signal = new AbortController().signal): Promise<void> {
   validateSavedPlan(job);
   const context = { jobId: job.id, ownerId: job.ownerId, media, signal };
+  if (productionModeOf(job) === "movie-first" && job.result) {
+    const asset = await media.getAsset(job.result.assetId);
+    const file = await stat(await media.assetPath(asset.id));
+    if (asset.ownerId !== job.ownerId || asset.jobId !== job.id || asset.kind !== "video" || file.size !== asset.bytes) {
+      throw new MovieError("SAVED_MOVIE_UNAVAILABLE", "The encoded movie is unavailable. Restore it before extracting its storyboard.", 409);
+    }
+    return;
+  }
   if (resolveHeroMode(job.request.hero_mode) === "LIKENESS") {
     for (const id of job.request.customer_reference_asset_ids) await readImage(id, "customer", "Saved original", context);
   }
@@ -76,9 +88,10 @@ export async function validateRetryAssets(job: MovieJob, media: MediaRepository,
     if (asset.ownerId !== "shared:catalog") throw new MovieError("INVALID_REFERENCE", "Saved product reference is not a catalog asset.", 409);
     await readImage(image.assetId, "product", image.role, context);
   }
-  const approved = selectStoryboardFrames(job.frames, job.plan!.shots.map(shot => shot.id))
-    .filter(frame => frame.continuity.verdict === "PASS");
-  for (const frame of approved) await validateApprovedFrame(frame, context);
+  const movieFirst = productionModeOf(job) === "movie-first";
+  const saved = selectStoryboardFrames([...job.frames, ...(job.sceneFrames ?? [])].filter(frame => frame.source !== "extracted"), job.plan!.shots.map(shot => shot.id))
+    .filter(frame => movieFirst ? isFrameApproved(frame) || frame.designerDecision?.action !== "regenerate" && frame.continuity.verdict !== "REJECT" : isFrameApproved(frame));
+  for (const frame of saved) await validateApprovedFrame(frame, context, !movieFirst);
   if (job.hero) {
     const asset = await media.getAsset(job.hero.assetId);
     const file = await stat(await media.assetPath(asset.id));
