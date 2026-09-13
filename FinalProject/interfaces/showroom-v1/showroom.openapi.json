@@ -1,0 +1,2265 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MagicPitch showroom integration boundary",
+    "version": "1.0.0",
+    "description": "Contract specification; foundation does not implement routes. One authoritative FinalProject session, full MoviePart studio, scoped Windows bridge. Legacy dedicated-media v1 unchanged."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "deviceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Local operator setup only; never a browser long-lived secret"
+      },
+      "sessionBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Short-lived session capability redeemed from one-time kiosk code; in-memory only"
+      },
+      "bridgeBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "One bridge connection, commands/acknowledgements/heartbeats only"
+      },
+      "operatorBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Short-lived bridge:lease grant scoped to one bridge; not a bridge connection credential"
+      }
+    }
+  },
+  "paths": {
+    "/v1/operator/kiosk-pairings": {
+      "post": {
+        "operationId": "post__v1_operator_kiosk-pairings",
+        "security": [
+          {
+            "deviceBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/KioskPairingInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/KioskPairingSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/kiosk/pair": {
+      "post": {
+        "operationId": "post__v1_kiosk_pair",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/KioskPairExchangeSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ShowroomSessionCreatedSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/showroom": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "get__v1_sessions_id_showroom",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ShowroomSnapshotSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/showroom/actions": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_sessions_id_showroom_actions",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/ShowroomActionSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ShowroomSnapshotSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/showroom/catalog": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "get__v1_sessions_id_showroom_catalog",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ShowroomCatalogSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/showroom/voice": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_sessions_id_showroom_voice",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/ShowroomVoiceSetupInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ShowroomVoiceSetupSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete__v1_sessions_id_showroom_voice",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Completed; no response body"
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/showroom/references": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_sessions_id_showroom_references",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ShowroomReferenceUploadedSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "expectedRevision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "description": "At most 5 MiB. Exact eventId+bytes retries return the original receipt; changed payload conflicts. Ownership and consent are server-checked."
+      }
+    },
+    "/v1/sessions/{id}/showroom/references/{assetId}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "assetId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "delete__v1_sessions_id_showroom_references_assetId",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ShowroomSnapshotSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "expectedRevision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "description": "Revoke an unused owned reference for retake; reject in-use accepted inputs. Idempotent eventId and expectedRevision required."
+      }
+    },
+    "/v1/sessions/{id}/assets/{assetId}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "assetId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "get__v1_sessions_id_assets_assetId",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized image or MP4 bytes",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Authorized byte range"
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Range",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Existing single byte range"
+          }
+        ]
+      }
+    },
+    "/v1/sessions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "delete__v1_sessions_id",
+        "security": [
+          {
+            "sessionBearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Completed; no response body"
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operator/bridges": {
+      "post": {
+        "operationId": "post__v1_operator_bridges",
+        "security": [
+          {
+            "deviceBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/BridgeRegistrationInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/BridgePairingSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bridges/{bridgeId}/pair": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_bridges_bridgeId_pair",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/BridgePairInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/BridgeCredentialSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operator/bridges/{bridgeId}/operator-pairing": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_operator_bridges_bridgeId_operator-pairing",
+        "security": [
+          {
+            "deviceBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/KioskPairingInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/OperatorPairingSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bridges/{bridgeId}/operator-pair": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_bridges_bridgeId_operator-pair",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/OperatorPairInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/OperatorCredentialSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operator/bridges/{bridgeId}/lease": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_operator_bridges_bridgeId_lease",
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/BridgeLeaseInputSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/BridgeLeaseSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bridges/{bridgeId}/commands": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "get__v1_bridges_bridgeId_commands",
+        "security": [
+          {
+            "bridgeBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/BridgeCommandBatchSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "afterSequence",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        ]
+      }
+    },
+    "/v1/bridges/{bridgeId}/acknowledgements": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_bridges_bridgeId_acknowledgements",
+        "security": [
+          {
+            "bridgeBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/BridgeAcknowledgementSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Completed; no response body"
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bridges/{bridgeId}/heartbeats": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "post__v1_bridges_bridgeId_heartbeats",
+        "security": [
+          {
+            "bridgeBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./contracts.schema.json#/$defs/BridgeHeartbeatSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Completed; no response body"
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bridges/{bridgeId}/connect": {
+      "parameters": [
+        {
+          "name": "bridgeId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "get__v1_bridges_bridgeId_connect",
+        "security": [],
+        "responses": {
+          "101": {
+            "description": "Completed; no response body"
+          },
+          "400": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Explicit safe error; no provider credentials or upstream bodies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./contracts.schema.json#/$defs/ApiErrorResponseSchema"
+                }
+              }
+            }
+          }
+        },
+        "description": "Windows local WebSocket upgrade only. Authenticate once in the first message, never in a URL; reject any other messages until authenticated. Not exposed through the tablet gateway.",
+        "x-websocket-client-message": {
+          "$ref": "./contracts.schema.json#/$defs/BridgeClientMessageSchema"
+        },
+        "x-websocket-server-message": {
+          "$ref": "./contracts.schema.json#/$defs/BridgeServerMessageSchema"
+        }
+      }
+    }
+  }
+}
