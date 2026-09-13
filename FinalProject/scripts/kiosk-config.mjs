@@ -161,3 +161,12 @@ export function studioReady(value) {
   }
   return value.worker?.available === true;
 }
+
+export function apiReady(value, options) {
+  return value?.status === "ready" &&
+    value.providers?.media === (options.liveMedia ? "http" : "mock") &&
+    value.showroom?.mode === (options.liveStudio ? "studio" : "fixture") &&
+    value.showroom?.voice?.enabled === Boolean(options.liveVoice) &&
+    value.showroom?.calendar?.provider === (options.googleCalendar ? "google" : "disabled") &&
+    value.showroom?.bridge?.enabled === Boolean(options.windowsBridge);
+}
