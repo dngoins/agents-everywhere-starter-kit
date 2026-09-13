@@ -98,7 +98,9 @@ on it, so rotating it would strand cleanup under another owner. Explicit
 with the stored identity; disagreement, a corrupt file, or a non-file entry
 fails closed rather than replacing it. The file is private and is never logged.
 Complete verified cleanup under the existing identity before deliberate
-rotation. Do not delete credentials or pending cleanup receipts merely to
+rotation, and retain the same private studio origin while cleanup is pending.
+Receipt ownership binds the credential, origin and session scope before any
+recovery request. Do not delete credentials or pending cleanup receipts merely to
 silence a startup error; legacy unbound receipts require explicit recovery.
 
 Voice preserves `VOICE_MODEL` (default `gpt-live-1`) and the regular/reasoning
