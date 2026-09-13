@@ -175,3 +175,12 @@ test('studio credentials cannot be sent to a browser-selected or remote destinat
     assert.throws(() => createStudioProvider({ baseUrl, token: 'fake' }), /loopback origin/);
   }
 });
+
+test('staged MP4 validation decodes the exact real 720p timeline and rejects a different promised duration', async t => {
+  await mkdir(resolve('.runtime', 'tests'), { recursive: true });
+  const directory = await mkdtemp(resolve('.runtime', 'tests', 'studio-video-'));
+  t.after(() => rm(directory, { recursive: true, force: true, maxRetries: 5 }));
+  const bytes = new Uint8Array(await readFile(new URL('../fixtures/media/default-demo.mp4', import.meta.url)));
+  await validateStudioVideo(bytes, 10, new AbortController().signal, { directory: resolve(directory, 'validation') });
+  await assert.rejects(validateStudioVideo(bytes, 15, new AbortController().signal, { directory: resolve(directory, 'validation') }), /promised 720p/);
+});
