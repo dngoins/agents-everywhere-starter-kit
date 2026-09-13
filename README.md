@@ -204,10 +204,14 @@ Run commands from the named component directory:
 | Component | Local validation |
 |---|---|
 | MoviePart | `npm run typecheck`, `npm test`, `npm run build` |
-| FinalProject | `npm run verify` - typecheck, tests, generated-interface drift, build, and synthetic smoke flow |
+| FinalProject | `npm run verify` - typecheck, tests including colocated bridge tests, shared-runtime tests, generated-interface drift, clean production build, and synthetic smoke flow |
 | RobotPart | `npm test`, `npm run build` |
+| Shared showroom runtime | `npm test` in `packages/showroom-runtime`; also included by FinalProject verification |
 
 Offline tests and encoded fixtures demonstrate software behavior, not live account access, customer likeness quality, physical robot safety, or human-observed playback.
+MoviePart's default tests include its colocated operator controller tests.
+FinalProject's clean production build excludes colocated test modules, including
+stale outputs from earlier builds.
 
 - [Architecture and interaction design](docs/architecture.md)
 - [Movie studio setup and pipeline](MoviePart/README.md)
