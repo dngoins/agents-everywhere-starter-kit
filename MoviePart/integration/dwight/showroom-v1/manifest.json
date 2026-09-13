@@ -1,0 +1,28 @@
+{
+  "contractVersion": 1,
+  "mode": "studio",
+  "sourceHashNormalization": "LF",
+  "sourceHashes": {
+    "src/contracts/showroom-common.ts": "6fc01ab3688c54790b2d38cb81c09cd66a654c55d72ab65980254e8b5819f4f2",
+    "src/contracts/studio.ts": "d21ce61d95ad3b9531b5f8e1dc47d4b5a842b164ad8ab243d2adc72b6c5b5980",
+    "src/contracts/bridge.ts": "490af8fc6b4d56da77afa1334cf386385f27345b0df2c4140c537e5459eaa0ae",
+    "src/contracts/showroom.ts": "2a5c521a9804e3853a059beaa377bc3749a2256077c3384811663724a2b68e0d"
+  },
+  "generatedFiles": {
+    "types.d.ts": "e0b7c7912027ed34ca15fd76eaf49dc671c00aee8f29ef8414cd1e50fbf11859",
+    "contracts.schema.json": "8cc3c74799e494c6e93f083d9bb8103df11226f053092f32e21245b907ff9551",
+    "showroom.openapi.json": "4c253a2200b5d51f583700c06d38779132ff2673dc91eb48ea145f9cd22a3f6d",
+    "examples.json": "081ad3a5d253ed2471e3e21dfa328a9b291e7640d241522d7102a53f13071d5e",
+    "README.md": "c26a5a6fb36280a55b1485128e923352bfe101c9c561f9b8b0e07eb6e4b1bc0b"
+  },
+  "runtimeRules": [
+    "Exact event ID retry dedupe does not replace expectedRevision concurrency",
+    "Pending ID, fingerprint, input revision, expiry and explicit approval bind all side effects",
+    "Current consent, same-session ownership, real catalog readiness and immutable studio acceptance",
+    "One to four unique capture views and assets with primary in set; no images in non-likeness provider calls",
+    "Exactly sixty elapsed calendar minutes; all recipients and configured product/location in readback",
+    "Bridge role isolation; tracking freshness, foreground heartbeat, local watchdog and cumulative pulse budget",
+    "Stop bypasses movement ordering/revision/expiry limits after authentication",
+    "SDP and reference bytes bounded; no provider credentials or long-lived browser secrets"
+  ]
+}
