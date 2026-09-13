@@ -112,14 +112,14 @@ test("built Next serves the bounded same-origin gateway over real loopback HTTP"
       headers: { ...headers, Cookie: "must-not-forward=1", "X-Forwarded-Host": "evil.example.test", "X-Api-Key": "fake-secret" },
     });
 
-    await t.test("built gateway and actual API complete the consented four-photo fixture through the real kiosk controller", { timeout: 120_000 }, async () => {
+    for (const bridgeEnabled of [false, true]) await t.test(`actual four-photo kiosk fixture with bridge ${bridgeEnabled ? "enabled but unpaired" : "disabled"}`, { timeout: 120_000 }, async () => {
       await access(new URL("../.next/BUILD_ID", import.meta.url));
       await access(new URL("../../FinalProject/dist/server.js", import.meta.url));
       const { ShowroomClient } = await import("../integration/showroom-client.ts");
       const { ShowroomController } = await import("../src/kiosk/showroom-controller.ts");
       const { default: sharp } = await import("sharp");
       const operatorToken = "test-operator-bootstrap-123456789012345678";
-      const options = launchOptions(["--public-origin", publicOrigin]);
+      const options = launchOptions(["--public-origin", publicOrigin, ...(bridgeEnabled ? ["--windows-bridge"] : [])]);
       const env = integrationEnvironments({
         options, deviceToken: "test-device-bootstrap-123456789012345678",
         mediaToken: "test-media-bootstrap-123456789012345678", operatorToken,
@@ -130,7 +130,7 @@ test("built Next serves the bounded same-origin gateway over real loopback HTTP"
         api = await launchApplication({ ...env.api, PORT: "0" }, apiServer, finalRoot);
         const readiness = await (await fetch(`${api.base}/readyz`)).json();
         assert.equal(apiReady(readiness, options), true);
-        assert.equal(readiness.showroom.bridge.enabled, false);
+        assert.equal(readiness.showroom.bridge.enabled, bridgeEnabled);
         assert.equal(readiness.showroom.voice.enabled, false);
         gateway = await launchApplication({ ...env.ui, NODE_ENV: "production", SHOWROOM_API_UPSTREAM: api.base });
         const issued = await fetch(`${api.base}/v1/operator/kiosk-pairings`, {
@@ -216,6 +216,7 @@ test("built Next serves the bounded same-origin gateway over real loopback HTTP"
         await controller.end();
         assert.equal(controller.getState().connection, "ended");
         assert.equal(controller.capture.getState().references.length, 0);
+        assert.match(lastAuthorization, /^Bearer [A-Za-z0-9._~-]+$/);
         const revoked = await fetch(`${gateway.base}/api/showroom/v1/sessions/${sessionId}/assets/${studio.assetId}`, {
           headers: { Origin: publicOrigin, Authorization: lastAuthorization },
         });

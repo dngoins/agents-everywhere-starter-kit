@@ -8,6 +8,7 @@ export interface KioskLaunchOptions {
   uiPort: number;
   mediaPort: number;
   publicOrigin?: string;
+  startupTimeoutMs: number;
 }
 export function optionalEnvironment(path: string): Promise<Record<string, string>>;
 export function launchOptions(args: string[]): KioskLaunchOptions;

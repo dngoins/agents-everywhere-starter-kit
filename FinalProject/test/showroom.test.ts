@@ -1,7 +1,8 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import sharp from 'sharp';
 import { Orchestrator } from '../src/orchestrator/service.js';
 import { createFixtureStudioProvider } from '../src/providers/studio-fixture.js';
@@ -12,6 +13,10 @@ import { readConfig } from '../src/config.js';
 import { ProviderFailure } from '../src/providers/http-client.js';
 import type { ShowroomCalendar, ShowroomMotion } from '../src/orchestrator/showroom.js';
 import type { BridgeStatus } from '../src/contracts/bridge.js';
+import {
+  CalendarError, CalendarSchedulingService, FileCalendarReceiptStore, GoogleCalendarProvider,
+  confirmationKey, createAppointmentDraft, parseCalendarConfig, type GoogleCalendarEvent,
+} from '../src/calendar/index.js';
 
 const consent = { policyVersion: 'showroom-v1', personalization: true, capture: true, likeness: true, providerTransfer: true, calendar: false, motion: false };
 const selection: StudioSelection = {
@@ -318,4 +323,85 @@ test('an uncertain calendar confirmation reconciles only its exact original even
   assert.deepEqual(requests[1], requests[0]);
   await f.service.action(f.created.sessionId, event);
   assert.equal(requests.length, 2);
+});
+
+test('a real calendar post-insert receipt failure stays uncertain in the showroom and cannot create a replacement event', async t => {
+  await mkdir(resolve('.runtime', 'tests'), { recursive: true });
+  const directory = await mkdtemp(resolve('.runtime', 'tests', 'showroom-calendar-'));
+  t.after(() => rm(directory, { recursive: true, force: true, maxRetries: 5 }));
+  const now = new Date('2026-09-13T12:00:00Z');
+  const config = parseCalendarConfig({
+    CALENDAR_PROVIDER: 'google', GOOGLE_CLIENT_ID: 'fake-client', GOOGLE_CLIENT_SECRET: 'fake-secret',
+    SCHEDULING_TIME_ZONE: 'America/New_York', SCHEDULING_LOCATION: 'Test showroom',
+    SCHEDULING_STAFF_EMAILS: 'staff@example.test',
+  });
+  if (config.provider !== 'google') throw new Error('Expected explicit fake Google configuration.');
+  const events = new Map<string, GoogleCalendarEvent>();
+  let insertions = 0;
+  const provider = new GoogleCalendarProvider(config, {
+    clock: () => now, auth: { getAccessToken: async () => 'fake-access-token' },
+    fetch: async (target, init) => {
+      const url = new URL(target);
+      assert.equal(url.origin, 'https://www.googleapis.com');
+      if (url.pathname.endsWith('/freeBusy')) {
+        const interval: { timeMin: string; timeMax: string } = JSON.parse(String(init.body));
+        return Response.json({ ...interval, calendars: { primary: { busy: [] } } });
+      }
+      if (init.method === 'GET') {
+        const event = events.get(url.pathname.split('/').at(-1)!);
+        return event ? Response.json(event) : new Response(null, { status: 404 });
+      }
+      assert.equal(init.method, 'POST');
+      assert.equal(url.searchParams.get('sendUpdates'), 'all');
+      insertions++;
+      const input: GoogleCalendarEvent = JSON.parse(String(init.body));
+      const event: GoogleCalendarEvent = { ...input, status: 'confirmed', organizer: { self: true }, etag: '"v1"' };
+      events.set(event.id, event);
+      return Response.json(event);
+    },
+  });
+  const receipts = new FileCalendarReceiptStore(directory);
+  const save = receipts.save.bind(receipts);
+  let failCreated = true;
+  receipts.save = async receipt => {
+    if (failCreated && receipt.state === 'created') {
+      throw new CalendarError('CALENDAR_STORAGE_FAILED', 'Injected post-insert receipt failure.', 503);
+    }
+    await save(receipt);
+  };
+  const scheduling = new CalendarSchedulingService(config, { provider, receipts, clock: () => now });
+  const f = await setup(t, { now: () => now.getTime(), calendar: {
+    draft: (proposal, product) => createAppointmentDraft(config, { ...proposal, productId: product.id, productName: product.name }, now),
+    checkAvailability: draft => scheduling.checkAvailability({ ...draft, attendees: [...draft.attendees] }),
+    confirm: request => scheduling.confirm({ ...request, draft: { ...request.draft, attendees: [...request.draft.attendees] } }),
+  } });
+  const ready = await f.movie();
+  if (ready.studio.status !== 'ready') throw new Error('Expected ready');
+  const playback = { jobId: ready.studio.jobId, assetId: ready.studio.assetId, playbackId: randomUUID() };
+  await f.action('playback_started', playback); await f.action('playback_ended', playback);
+  await f.action('consent_recorded', { ...consent, calendar: true }); await f.confirm();
+  await f.action('calendar_draft_proposed', { startTime: '2026-09-20T15:00:00-04:00', customerEmail: 'customer@example.test' });
+  const pending = f.snapshot().pendingAction!;
+  const confirmation = {
+    schemaVersion: 1, eventId: randomUUID(), expectedRevision: f.snapshot().revision, type: 'action_confirmed',
+    payload: { pendingActionId: pending.pendingActionId, confirmationFingerprint: pending.confirmationFingerprint, decision: 'approve', channel: 'touch' },
+  };
+  const uncertain = await f.service.action(f.created.sessionId, confirmation);
+  assert.equal(uncertain.calendar.status, 'uncertain');
+  assert.equal(insertions, 1);
+  assert.equal(events.size, 1);
+  assert.equal((await receipts.load(confirmationKey(pending.pendingActionId)))?.state, 'pending');
+  await assert.rejects(f.action('calendar_draft_proposed', {
+    startTime: '2026-09-20T16:00:00-04:00', customerEmail: 'replacement@example.test',
+  }), /Reconcile/);
+  failCreated = false;
+  const reconciled = await f.service.action(f.created.sessionId, confirmation);
+  assert.equal(reconciled.calendar.status, 'scheduled');
+  if (reconciled.calendar.status !== 'scheduled') throw new Error('Expected scheduled');
+  assert.equal(reconciled.calendar.confirmationId, pending.pendingActionId);
+  assert.ok(events.has(reconciled.calendar.eventId));
+  assert.equal((await receipts.load(confirmationKey(pending.pendingActionId)))?.state, 'created');
+  await f.service.action(f.created.sessionId, confirmation);
+  assert.equal(insertions, 1);
+  assert.equal(events.size, 1);
 });

@@ -17,7 +17,7 @@ function port(value, fallback) {
 export function launchOptions(args) {
   const result = {
     liveMedia: false, liveStudio: false, liveVoice: false, googleCalendar: false, windowsBridge: false,
-    apiPort: 3101, uiPort: 3200, mediaPort: 3201, publicOrigin: undefined,
+    apiPort: 3101, uiPort: 3200, mediaPort: 3201, publicOrigin: undefined, startupTimeoutMs: 300_000,
   };
   const flags = {
     "--live-media": "liveMedia", "--live-studio": "liveStudio", "--live-voice": "liveVoice",
@@ -26,9 +26,17 @@ export function launchOptions(args) {
   for (let index = 0; index < args.length; index++) {
     const name = args[index];
     if (Object.hasOwn(flags, name)) { result[flags[name]] = true; continue; }
-    if (!["--api-port", "--ui-port", "--media-port", "--public-origin"].includes(name)) throw new Error(`Unsupported option: ${name}`);
+    if (!["--api-port", "--ui-port", "--media-port", "--public-origin", "--startup-timeout-ms"].includes(name)) throw new Error(`Unsupported option: ${name}`);
     const value = args[++index];
     if (!value) throw new Error(`Missing value for ${name}.`);
+    if (name === "--startup-timeout-ms") {
+      const timeout = Number(value);
+      if (!Number.isInteger(timeout) || timeout < 30_000 || timeout > 600_000) {
+        throw new Error("Use a startup timeout between 30000 and 600000 milliseconds.");
+      }
+      result.startupTimeoutMs = timeout;
+      continue;
+    }
     if (name === "--public-origin") { result.publicOrigin = trustedPublicOrigin(value); continue; }
     const key = { "--api-port": "apiPort", "--ui-port": "uiPort", "--media-port": "mediaPort" }[name];
     result[key] = port(value);

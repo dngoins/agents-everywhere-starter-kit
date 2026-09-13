@@ -43,6 +43,7 @@ const jobSchema = z.object({ job: z.object({
 const localReceiptSchema = z.object({
   sessionId: id, snapshotId: id, fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   jobKey: id, batchKey: id, cleanupRequired: z.boolean(), jobId: id.optional(),
+  ownerFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).strict();
 type Receipt = z.infer<typeof localReceiptSchema>;
 function canonical(value: unknown): string {
@@ -65,12 +66,23 @@ export function createStudioProvider(options: {
   const directory = resolve(options.directory ?? '.runtime/studio-cleanup');
   const request = options.fetch ?? fetch;
   const active = new Map<string, Promise<StudioOutput>>();
+  const credentialHash = createHash('sha256').update(options.token).digest('hex');
+  const ownerFingerprint = (sessionId: string) => hash(['movie-studio-owner-v1', base.origin, sessionId, credentialHash]);
   const receiptPath = (snapshotId: string) => join(directory, `${id.parse(snapshotId)}.json`);
   const readReceipt = async (snapshotId: string): Promise<Receipt | null> => {
-    try { return localReceiptSchema.parse(JSON.parse(await readFile(receiptPath(snapshotId), 'utf8'))); } catch (error) {
+    let receipt: Receipt;
+    try { receipt = localReceiptSchema.parse(JSON.parse(await readFile(receiptPath(snapshotId), 'utf8'))); } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw new ProviderFailure('STUDIO_RECEIPT_INVALID', 'The durable studio receipt could not be read; inspect local state before resubmitting.');
     }
+    if (receipt.cleanupRequired && receipt.ownerFingerprint !== ownerFingerprint(receipt.sessionId)) {
+      throw new ProviderFailure(
+        'STUDIO_CLEANUP_OWNER_MISMATCH',
+        'This pending studio receipt is not bound to the configured origin and credential. Restore the original configuration, or reconcile an older unbound receipt through its original studio owner before continuing.',
+        false, true,
+      );
+    }
+    return receipt;
   };
   const writeReceipt = async (receipt: Receipt) => {
     await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -159,6 +171,7 @@ export function createStudioProvider(options: {
     receipt ??= {
       sessionId: value.sessionId, snapshotId: snapshot.snapshotId, fingerprint,
       batchKey: snapshot.snapshotId, jobKey: snapshot.snapshotId, cleanupRequired: true,
+      ownerFingerprint: ownerFingerprint(value.sessionId),
     };
     await writeReceipt(receipt);
     try {

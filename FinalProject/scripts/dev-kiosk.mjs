@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { integrationEnvironments, launchOptions, optionalEnvironment, studioReady, apiReady } from "./kiosk-config.mjs";
+import { persistentStudioCredential } from "./studio-credential.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const movieRoot = resolve(root, "..", "MoviePart");
@@ -104,7 +105,9 @@ try {
   const robotEnv = options.liveVoice ? await optionalEnvironment(resolve(root, "..", "RobotPart", ".env")) : {};
   const deviceToken = randomBytes(32).toString("base64url");
   const mediaToken = randomBytes(32).toString("base64url");
-  const studioToken = randomBytes(32).toString("base64url");
+  const studioToken = options.liveStudio ? await persistentStudioCredential(resolve(root, ".runtime"), [
+    finalEnv.MOVIE_API_TOKEN, movieEnv.MOVIE_API_TOKEN,
+  ]) : "";
   const operatorToken = randomBytes(32).toString("base64url");
   const env = integrationEnvironments({ options, deviceToken, mediaToken, studioToken, operatorToken, finalEnv, movieEnv, robotEnv });
   for (const port of [options.apiPort, options.uiPort, ...(options.liveMedia ? [options.mediaPort] : [])]) await freePort(port);
@@ -132,7 +135,7 @@ try {
       if (response.status === 401 || response.status === 403) throw new Error("The studio rejected its private machine token.");
       if (!response.ok) return false;
       return studioReady(await response.json());
-    }, { Authorization: `Bearer ${studioToken}` }, 120_000);
+    }, { Authorization: `Bearer ${studioToken}` }, options.startupTimeoutMs);
   }
   start("MagicPitch API", ["dist/server.js"], root, env.api);
   await waitFor(`${env.apiOrigin}/readyz`, async (response) => {
@@ -142,7 +145,7 @@ try {
   if (!options.liveStudio) {
     start("MoviePart kiosk", ["node_modules/next/dist/bin/next", "dev", "-H", "127.0.0.1", "-p", String(options.uiPort)], movieRoot, env.ui);
   }
-  await waitFor(`${env.uiOrigin}/kiosk`, async (response) => response.ok, {}, 120_000);
+  await waitFor(`${env.uiOrigin}/kiosk`, async (response) => response.ok, {}, options.startupTimeoutMs);
   console.log(JSON.stringify({
     event: "kiosk_integration_ready",
     kiosk: `${env.publicOrigin}/kiosk`, localKiosk: `${env.uiOrigin}/kiosk`, api: env.apiOrigin,
