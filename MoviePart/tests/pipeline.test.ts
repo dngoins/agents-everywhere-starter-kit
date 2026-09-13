@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { executeMovie, type PipelineServices } from "../src/pipeline";
+import { retrySummary } from "../src/jobs/retry";
 import {
   type CharacterReference, type MovieJob, type MoviePlan, type StoryboardFrame,
   type JobStatus, type RenderResult, MovieError,
@@ -164,4 +165,126 @@ test("explicit Veo selection combines an actual provider clip with approved stil
     return { ...sample.result, mode: "hybrid-video" };
   };
   assert.equal((await sample.run()).mode, "hybrid-video");
+});
+
+test("required Veo recovery resumes its existing operation and propagates validation failures", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "google-veo";
+  sample.plan.videoProvider = "google-veo";
+  sample.job.heroAttempted = true;
+  const operationId = "models/veo-3.1-generate-preview/operations/existing";
+  sample.job.operations.push({ provider: "Google Veo", id: operationId });
+  sample.services.video.generate = async input => {
+    assert.equal(input.operationId, operationId);
+    throw new MovieError("OPENAI_RATE_LIMITED", "Review was rate limited.");
+  };
+  sample.services.renderer.render = async () => assert.fail("Review must succeed before rendering");
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "OPENAI_RATE_LIMITED");
+  assert.equal(sample.stages.at(-1), "GENERATING_HERO");
+});
+
+test("both video providers pass the explicit bookend layout to final assembly", async () => {
+  for (const provider of ["google-veo", "openai-sora"] as const) {
+    const sample = fixture(true);
+    sample.job.request.video_provider = provider;
+    sample.job.request.render_layout = "video-bookends";
+    sample.plan.videoProvider = provider;
+    sample.services.video.generate = async () => ({
+      assetId: randomUUID(), shotId: "shot_03", provider: provider === "google-veo" ? "Google Veo" : "OpenAI Sora",
+      model: "offline-test",
+    });
+
+    sample.services.renderer.render = async input => {
+      assert.equal(input.renderLayout, "video-bookends");
+      assert.equal(input.frames.length, 4, "Keep every approved reference even though only bookends become still segments");
+      return { ...sample.result, mode: "hybrid-video", durationSeconds: 15, renderLayout: input.renderLayout };
+    };
+    const result = await sample.run();
+    assert.equal(result.durationSeconds, 15);
+    assert.equal(result.renderLayout, "video-bookends");
+  }
+});
+
+test("bookend requests cannot silently receive the older storyboard-layout movie", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "google-veo";
+  sample.job.request.render_layout = "video-bookends";
+  sample.plan.videoProvider = "google-veo";
+  sample.services.video.generate = async () => ({ assetId: randomUUID(), shotId: "shot_03", provider: "Google Veo", model: "offline-test" });
+  sample.services.renderer.render = async () => ({ ...sample.result, mode: "hybrid-video" });
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "RENDER_INVALID_OUTPUT");
+});
+
+test("endpoint preparation failure does not mark Veo as submitted, but the provider's submission hook does", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "google-veo";
+  sample.plan.videoProvider = "google-veo";
+  sample.services.video.generate = async (_input, context) => {
+    assert.ok(context.beforeVideoSubmission);
+    throw new MovieError("CONTINUITY_REJECTED", "Missing end frame.");
+  };
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "CONTINUITY_REJECTED");
+  assert.equal(sample.checkpoints.some(patch => "heroAttempted" in patch), false);
+  sample.services.video.generate = async (_input, context) => {
+    assert.ok(context.beforeVideoSubmission);
+    await context.beforeVideoSubmission();
+    throw new MovieError("VEO_TIMEOUT", "The submission outcome is uncertain.");
+  };
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "VEO_TIMEOUT");
+  assert.deepEqual(sample.checkpoints.at(-1), { heroAttempted: true });
+});
+
+test("an uncertain untracked Veo submission cannot be retried until an operation is recovered", async () => {
+  const sample = fixture(true);
+  await sample.run();
+  Object.assign(sample.job, ...sample.checkpoints);
+  sample.job.status = "FAILED";
+  sample.job.request.video_provider = "google-veo";
+  sample.plan.videoProvider = "google-veo";
+  sample.job.heroAttempted = true;
+  sample.services.video.generate = async () => assert.fail("Do not repeat an uncertain paid request");
+  assert.equal(retrySummary(sample.job).eligible, false);
+  await assert.rejects(sample.run(), (error: unknown) => error instanceof MovieError && error.code === "VEO_SUBMISSION_UNCERTAIN");
+  sample.job.operations.push({ provider: "Google Veo", id: "models/veo-3.1-generate-preview/operations/recovered" });
+  assert.equal(retrySummary(sample.job).eligible, true);
+});
+
+test("longer movie lengths route through a complete animation sequence, not stretched stills", async () => {
+  for (const duration of [18, 23, 28] as const) {
+    const sample = fixture(true);
+    sample.job.request.video_provider = "google-veo";
+    sample.job.request.render_layout = "video-bookends";
+    sample.job.request.movie_duration_seconds = duration;
+    sample.plan.videoProvider = "google-veo";
+    const clips = Array.from({ length: duration === 28 ? 3 : 2 }, () => ({
+      assetId: randomUUID(), shotId: "shot_03" as const, provider: "Google Veo" as const, model: "offline-test",
+    }));
+    sample.services.sequence = async job => {
+      assert.equal(job.request.movie_duration_seconds, duration);
+      return clips;
+    };
+    sample.services.video.generate = async () => assert.fail("Use the sequence path for longer movies");
+    sample.services.renderer.render = async input => {
+      assert.deepEqual(input.videoClips, clips);
+      assert.deepEqual(input.hero, clips[0]);
+      assert.equal(input.movieDurationSeconds, duration);
+      return { ...sample.result, mode: "hybrid-video", durationSeconds: duration, renderLayout: "video-bookends" };
+    };
+    assert.equal((await sample.run()).durationSeconds, duration);
+  }
+});
+
+test("the 13-second preset retains a full single eight-second clip", async () => {
+  const sample = fixture(true);
+  sample.job.request.video_provider = "google-veo";
+  sample.job.request.render_layout = "video-bookends";
+  sample.job.request.movie_duration_seconds = 13;
+  sample.plan.videoProvider = "google-veo";
+  sample.services.video.generate = async () => ({ assetId: randomUUID(), shotId: "shot_03", provider: "Google Veo", model: "offline-test" });
+  sample.services.renderer.render = async input => {
+    assert.equal(input.movieDurationSeconds, 13);
+    assert.ok(input.hero);
+    return { ...sample.result, mode: "hybrid-video", durationSeconds: 13, renderLayout: "video-bookends" };
+  };
+  assert.equal((await sample.run()).durationSeconds, 13);
 });

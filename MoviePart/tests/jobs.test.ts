@@ -34,6 +34,51 @@ async function fixture(t: TestContext) {
   return { directory, config, store: new JobStore(directory), media: new LocalMediaRepository(directory) };
 }
 
+test("a heartbeat failure rejects the worker run instead of reporting a successful exit", async t => {
+  const { config, store } = await fixture(t);
+  store.heartbeat = async () => { throw new MovieError("WORKER_LOCK_LOST", "The worker no longer owns the queue.", 409); };
+  const worker = new MovieWorker(config, { store });
+  t.after(() => worker.stop());
+  await assert.rejects(worker.run(AbortSignal.timeout(10_000)),
+    (error: unknown) => error instanceof MovieError && error.code === "WORKER_LOCK_LOST");
+  assert.equal((await store.workerReadiness()).available, false);
+});
+
+test("unexpected heartbeat errors are surfaced without private filesystem details or credentials", async t => {
+  const { config, store } = await fixture(t);
+  store.heartbeat = async () => { throw new Error("private filesystem path and secret-api-key"); };
+  const worker = new MovieWorker(config, { store });
+  t.after(() => worker.stop());
+  await assert.rejects(worker.run(AbortSignal.timeout(10_000)), (error: unknown) => {
+    assert.ok(error instanceof MovieError);
+    assert.equal(error.code, "WORKER_HEARTBEAT_FAILED");
+    assert.doesNotMatch(error.message, /private filesystem path|secret-api-key/);
+    return true;
+  });
+});
+
+test("heartbeat shutdown retains the active job's operation and records the actual lease error", async t => {
+  const { config, store } = await fixture(t);
+  const queued = await store.create("owner", request(), product());
+  store.heartbeat = async () => { throw new MovieError("WORKER_LOCK_LOST", "The worker no longer owns the queue.", 409); };
+  const worker = new MovieWorker(config, { store, execute: async (_job, context) => {
+    await context.report({ stage: "GENERATING_HERO", message: "Existing video operation", provider: "test" });
+    await context.recordOperation("test", "saved-operation");
+    return new Promise<never>((_resolve, reject) => {
+      context.signal.addEventListener("abort", () => reject(context.signal.reason), { once: true });
+      context.signal.throwIfAborted();
+    });
+  } });
+  t.after(() => worker.stop());
+  await assert.rejects(worker.run(AbortSignal.timeout(10_000)),
+    (error: unknown) => error instanceof MovieError && error.code === "WORKER_LOCK_LOST");
+  const failed = await store.get(queued.id);
+  assert.equal(failed.error?.code, "WORKER_LOCK_LOST");
+  assert.equal(failed.error?.stage, "GENERATING_HERO");
+  assert.deepEqual(failed.operations, [{ provider: "test", id: "saved-operation" }]);
+  assert.equal(failed.result, null);
+});
+
 test("idempotency is owner-scoped and concurrent submissions atomically produce one durable job", async t => {
   const { store, directory } = await fixture(t);
   const input = request();
@@ -45,6 +90,54 @@ test("idempotency is owner-scoped and concurrent submissions atomically produce 
   assert.notEqual((await store.create("b", input, reference)).id, jobs[0].id);
   await assert.rejects(store.getOwned(jobs[0].id, "b"), /Job not found/);
   await assert.rejects(store.get("..\\private"), /Job not found/);
+});
+
+test("movie duration is part of request idempotency and immutable retry settings", async t => {
+  const { store } = await fixture(t);
+  const input: JobRequest = {
+    ...request(), enable_hero_video: true, video_provider: "google-veo",
+    render_layout: "video-bookends", movie_duration_seconds: 28,
+  };
+  const job = await store.create("owner", input, product());
+  assert.equal((await store.get(job.id)).request.movie_duration_seconds, 28);
+  assert.equal((await store.create("owner", input, product())).id, job.id);
+  await assert.rejects(store.create("owner", { ...input, movie_duration_seconds: 23 }, product()),
+    (error: unknown) => error instanceof MovieError && error.code === "IDEMPOTENCY_CONFLICT");
+});
+
+test("worker persists all animation segment checkpoints and the requested output length", async t => {
+  const { store, media, config, directory } = await fixture(t);
+  const queued = await store.create("owner", {
+    ...request(), enable_hero_video: true, video_provider: "google-veo",
+    render_layout: "video-bookends", movie_duration_seconds: 28,
+  }, product());
+  const worker = new MovieWorker(config, { store, media, execute: async (job, context, checkpoint) => {
+    const segments: NonNullable<typeof job.videoSegments> = [];
+    for (let index = 0; index < 3; index++) {
+      const operationId = `models/veo/operations/offline-${index}`;
+      await context.recordOperation("Google Veo", operationId);
+      const asset = await media.saveAsset({
+        ownerId: job.ownerId, jobId: job.id, kind: "video", mime: "video/mp4", bytes: new Uint8Array([index]),
+      });
+      const clip = { assetId: asset.id, shotId: "shot_03" as const, provider: "Google Veo" as const, model: "offline-test" };
+      segments.push({ index, submitted: true, operationId, clip });
+      await checkpoint({ videoSegments: [...segments], ...(index === 0 ? { hero: clip, heroAttempted: true } : {}) });
+    }
+    const result = await media.saveAsset({
+      ownerId: job.ownerId, jobId: job.id, kind: "video", mime: "video/mp4", bytes: new Uint8Array([9]),
+    });
+    return { assetId: result.id, durationSeconds: 28, hasAudio: false, mode: "hybrid-video", renderLayout: "video-bookends" };
+  } });
+  await worker.start();
+  try {
+    await worker.runOnce();
+    const saved = await new JobStore(directory).get(queued.id);
+    assert.equal(saved.status, "COMPLETED");
+    assert.equal(saved.videoSegments?.length, 3);
+    assert.equal(saved.hero?.assetId, saved.videoSegments?.[0].clip?.assetId);
+    assert.equal(saved.result?.durationSeconds, 28);
+    assert.equal(saved.operations.length, 3);
+  } finally { await worker.stop(); }
 });
 
 test("worker lease and claim exclude a second worker and preserve live locks", async t => {

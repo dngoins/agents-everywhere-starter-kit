@@ -6,15 +6,18 @@ import type { MediaRepository } from "../domain/services";
 import { getWardrobeLock, readImage } from "../references";
 import type { GenerationContext } from "../domain/services";
 import type { MovieRetrySummary } from "../../integration/contracts";
+import { hasUncertainVideoSegment } from "../domain/video-sequence-state";
 
 export function retrySummary(job: MovieJob): MovieRetrySummary {
   const frames = selectStoryboardFrames(job.frames, job.plan?.shots.map(shot => shot.id) ?? []);
   const approvedShots = frames.filter(isFrameApproved).length;
   const usable = selectStoryboardFrames([...job.frames, ...(job.sceneFrames ?? [])].filter(frame => frame.source !== "extracted"), job.plan?.shots.map(shot => shot.id) ?? [])
     .filter(frame => isFrameApproved(frame) || frame.designerDecision?.action !== "regenerate" && frame.continuity.verdict !== "REJECT").length;
+  const uncertainVeoSubmission = job.request.video_provider === "google-veo" && job.heroAttempted && !job.hero
+    && !job.operations.some(operation => operation.provider === "Google Veo");
   return {
     attempt: job.retries?.length ?? 0,
-    eligible: job.status === "FAILED" && !!job.plan && !!job.character && (!job.result || productionModeOf(job) === "movie-first"),
+    eligible: job.status === "FAILED" && !!job.plan && !!job.character && !uncertainVeoSubmission && !hasUncertainVideoSegment(job) && (!job.result || productionModeOf(job) === "movie-first"),
     approvedShots,
     remainingShots: (job.plan?.shots.length ?? 0) - (productionModeOf(job) === "movie-first" ? usable : approvedShots),
   };
@@ -92,11 +95,12 @@ export async function validateRetryAssets(job: MovieJob, media: MediaRepository,
   const saved = selectStoryboardFrames([...job.frames, ...(job.sceneFrames ?? [])].filter(frame => frame.source !== "extracted"), job.plan!.shots.map(shot => shot.id))
     .filter(frame => movieFirst ? isFrameApproved(frame) || frame.designerDecision?.action !== "regenerate" && frame.continuity.verdict !== "REJECT" : isFrameApproved(frame));
   for (const frame of saved) await validateApprovedFrame(frame, context, !movieFirst);
-  if (job.hero) {
-    const asset = await media.getAsset(job.hero.assetId);
+  const videos = [job.hero, ...(job.videoSegments ?? []).map(segment => segment.clip)].filter(video => video !== null && video !== undefined);
+  for (const video of new Map(videos.map(video => [video.assetId, video])).values()) {
+    const asset = await media.getAsset(video.assetId);
     const file = await stat(await media.assetPath(asset.id));
     if (asset.ownerId !== job.ownerId || asset.jobId !== job.id || asset.kind !== "video" ||
-        asset.mime !== "video/mp4" || file.size !== asset.bytes || job.hero.shotId !== job.plan!.heroShotId) {
+        asset.mime !== "video/mp4" || file.size !== asset.bytes || video.shotId !== job.plan!.heroShotId) {
       throw new MovieError("SAVED_HERO_UNAVAILABLE", "The saved hero clip is not available for this movie. No new video was submitted.", 409);
     }
   }

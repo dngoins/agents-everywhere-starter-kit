@@ -163,6 +163,19 @@ Snapshot `revision` is the polling cursor; context has its own revision. A `rese
 
 The web studio defaults to reviewed storyboards and a required Google Veo clip. Astra handles reference analysis and direction; Flare handles stills; a separate Google key authorizes Veo animation. Explicit `video_provider` selection requires an actual clip before hybrid assembly, never a slideshow fallback. When the temporary OpenAI Sora adapter is explicitly selected instead, its hero is car-only because that API rejects human-face references. DaVinci API integration remains unverified and is not represented as working.
 
+The studio selects `render_layout: "video-bookends"` with `movie_duration_seconds` set independently of the reference-story format: 13, 15 (default), 18, 23, or 28 seconds. The approved four/six-shot plan remains reference material; only two extracted video frames become still segments. The middle is entirely generated footage, with one to three eight-second clips and separately aligned native audio. A continuation is conditioned on the preceding approved video's final frame. Sora bookend movies are entirely car-only, including their extracted stills. API callers omitting the layout keep the legacy storyboard sequence.
+
+```mermaid
+flowchart LR
+    Approved["Approved generated clip"] --> Normalize["Normalize to 8 seconds / 24 fps"]
+    Normalize --> First["First frame of first clip<br/>Centered opening zoom"]
+    Normalize --> Video["1-3 distinct eight-second clips<br/>Per-clip native audio retained"]
+    Normalize --> Last["Last frame of final clip<br/>Centered closing zoom"]
+    First --> Cut["Selected-duration MP4<br/>Opening - video sequence - closing"]
+    Video --> Cut
+    Last --> Cut
+```
+
 Movie-first remains an explicitly selected image-motion alternative, illustrated below. Existing API callers that omit `production_mode` retain reviewed-storyboard behavior. A failed image-only job can explicitly switch to movie-first; an OpenAI hybrid request cannot silently downgrade to it.
 
 ```mermaid
@@ -178,7 +191,7 @@ flowchart LR
 
 Movie-first skips the continuity critic; it does not mark unreviewed images as approved. Intermediate visuals are saved privately as scene inputs. Only after encoding does the displayed storyboard populate with `source: extracted`, a timestamp, and `NOT_REVIEWED` metadata. An extraction-only failure preserves the MP4 and can resume without more model calls. In the current image-provider setup, the film is accurately labeled animated-image output, not fully generated moving footage.
 
-The following diagram describes the optional **reviewed-storyboard** path:
+The following diagram describes the **legacy storyboard-layout path** for callers that leave the video provider optional. The studio's required-video bookend path above does not substitute stills when animation is unavailable:
 
 ```mermaid
 flowchart TD
@@ -227,6 +240,8 @@ flowchart TD
 Original photo bytes remain primary identity references in likeness mode. Product references accompany storyboard generation; text descriptions supplement them rather than inventing a replacement vehicle. In first-person/generic-driver modes, even supplied customer images and appearance notes must not leak into provider payloads.
 
 ### Timeline contract
+
+The following are reference-plan timelines and legacy storyboard-layout output timings. `getRenderTimeline` derives the selected bookend output without rewriting the director plan: **2+8+3=13**, **3+8+4=15**, **1+8+8+1=18**, **3+8+8+4=23**, or **2+8+8+8+2=28**. The source hero remains `shot_03` or `shot_04`; ordered `videoSegments` checkpoints distinguish its continuations and their paid-operation boundaries.
 
 | Format | Shot durations in seconds | Total | Optional hero |
 |---|---|---|---|
@@ -289,6 +304,10 @@ flowchart LR
 ```
 
 The worker reuses saved character analysis and the director plan. Every new approval is checkpointed before progressing, so a second failure still preserves prior work. A previously attempted optional hero video is not resubmitted merely because final assembly is being retried. Missing approved media blocks the retry rather than silently regenerating it. This recovery endpoint is separate from the media service's cancellation and tombstone protocol.
+
+Required Veo retries resume the recorded Google operation, skipping endpoint generation and new video submission. Download and continuity validation can run again against that existing output; validation failures retain their actionable provider error instead of being replaced by a generic missing-animation message.
+
+For longer cuts, each `videoSegments` entry separately checkpoints its submission guard, operation ID, continuation-frame asset, and approved clip. A known operation can be recovered even if the segment checkpoint was interrupted after the global operation receipt. Completed clips are never regenerated on retry; an uncertain paid submission without an ID blocks new submissions. The existing creator-studio endpoints carry these additive duration/progress fields; no parallel generation API is introduced.
 
 ### Designer authority and practical approval
 

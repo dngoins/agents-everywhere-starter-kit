@@ -47,6 +47,11 @@ export function jobView(job: MovieJob): JobView {
     events: job.events, warnings: job.warnings, error: job.error, character: job.character, plan: job.plan,
     frames: movieFirst ? job.frames.filter(frame => frame.source === "extracted") : job.frames, hero: job.hero,
     productionMode: productionModeOf(job),
+    renderLayout: job.result?.renderLayout ?? job.request.render_layout ?? "storyboard",
+    ...((job.result?.renderLayout ?? job.request.render_layout) === "video-bookends"
+      ? { movieDurationSeconds: job.request.movie_duration_seconds ?? 15 } : {}),
+    videoClips: job.videoSegments?.filter(segment => segment.clip).sort((a, b) => a.index - b.index).flatMap(segment => segment.clip ? [segment.clip] : [])
+      ?? (job.hero ? [job.hero] : []),
     result: !requiredVideoPresent ? null : movieFirst ? job.result : job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
     retry,
     reviewRevision: job.designerDecisions?.length ?? 0,

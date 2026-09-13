@@ -349,6 +349,9 @@ export class JobStore {
         ...other.frames.map(frame => frame.assetId), ...(other.character?.sourceImages.map(ref => ref.assetId) ?? []),
         ...(other.sceneFrames?.map(frame => frame.assetId) ?? []),
         ...(other.hero ? [other.hero.assetId] : []), ...(other.result ? [other.result.assetId] : []),
+        ...(other.videoSegments ?? []).flatMap(segment => [
+          ...(segment.clip ? [segment.clip.assetId] : []), ...(segment.startFrameAssetId ? [segment.startFrameAssetId] : []),
+        ]),
       ]));
       for (const asset of await media.listAssets()) {
         const belongsToDeletedJob = asset.jobId === id || job.request.customer_reference_asset_ids.includes(asset.id);

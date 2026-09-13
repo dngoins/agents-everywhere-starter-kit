@@ -33,7 +33,7 @@ flowchart LR
     Studio["MoviePart /<br/>Independent creator studio"]
     Worker["Studio worker<br/>References, director and storyboard"]
     Voice["OpenAI Live<br/>Configured voice session"]
-    Models["Configured OpenAI<br/>Optional Veo for studio hero shots"]
+    Models["OpenAI references, planning and stills<br/>Google Veo: default studio animation"]
     Encoder["FFmpeg and ffprobe<br/>MP4 assembly and validation"]
     Followup["Future CRM and calendar integration"]
 
@@ -104,12 +104,15 @@ In a second terminal, from the repository root:
 ```powershell
 Set-Location MoviePart
 npm ci
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 npm run dev
 ```
 
 Open `/kiosk` to pair with the orchestrator or join the robot's existing session through an agreed trusted bridge. Creating another session in the kiosk does not attach the robot to it. Refreshing the kiosk forgets its in-memory capability.
 
-For the independent creator studio, also run `npm run worker` in another terminal in `MoviePart`. Configure a private `.env`, provide the selected car's authorized references, and confirm generation consent before creating a movie. The Create action lists missing requirements; it never silently turns unavailable live generation into mock success.
+For the independent creator studio, also run `npm run worker` in another terminal in `MoviePart`. Edit the private `.env` using [MoviePart's current example](MoviePart/.env.example): the default workflow requires `OPENAI_API_KEY` and `GEMINI_API_KEY`, with explicit model choices shown there. Provide the selected car's authorized references and confirm generation consent before creating a movie. The Create action lists missing requirements; it never silently turns unavailable live generation into mock success.
+
+After editing `.env`, wait for active jobs to finish before restarting the web app and worker. Refreshing the browser alone does not reload credentials. For production, use `npm run build` followed by `npm run start` instead of `npm run dev`; the worker remains a separate process.
 
 For real orchestrator media rendering, separately run `npm run media-service` in MoviePart and configure Dwight's HTTP media adapter with the matching private service token. See [the media handoff](MoviePart/README.md#dwight-integration) before sending any participant data. Mock orchestrator mode does not need this service.
 
@@ -123,14 +126,19 @@ Movie Magic builds a controlled film from stable references rather than asking o
 |---|---|
 | Vehicles | Tesla Model Y and Toyota Tundra Hybrid, each requiring its own authorized exterior/interior reference pack. Model 3 reference files are not substituted for Model Y. |
 | Templates | Velocity, Tomorrow Drive, Dream Route, and Hero of the Day |
-| Classic format | Four shots, 18 seconds |
-| Tiya's six-beat format | Six shots, 23 seconds; Hero of the Day is 24 seconds |
+| Classic reference plan | Four reference shots; legacy storyboard-layout output is 18 seconds |
+| Tiya's six-beat reference plan | Six reference shots; legacy storyboard-layout output is 23 seconds, or 24 for Hero of the Day |
 | Hero modes | `LIKENESS` uses approved customer photos; `POV` and `PERSONALIZED` omit customer photos from provider calls |
 | Baseline rendering | Usable scene visuals with pan/zoom, optionally scored with a permitted local audio file; movie-first does not claim continuity approval |
-| Default animation | One required eight-second Veo hero clip; missing or failed animation blocks the hybrid movie |
+| Default animation | 15-second film: 3-second opening zoom, 8-second Veo clip with native audio, 4-second closing zoom. Both stills come from the clip; no still-only shots in the middle |
+| Selectable movie lengths | 13, 15, 18, 23, or 28 seconds, independent of the reference-story format. Longer cuts use two or three generated clips, never repeated footage or intermediate stills |
 | Required OpenAI animation | An eight-second Sora car-only clip after storyboard approval; failure blocks the hybrid movie instead of substituting still-image zooms |
 
 The studio's output is a validated 16:9, 720p, 24 fps MP4. `image-motion` identifies movie-first animated-image output; `storyboard-motion` and `hybrid-video` describe reviewed stills or a hybrid with an existing/generated hero clip. These are **not** the orchestrator's result-provenance labels, and animated stills are not fully AI-generated moving footage.
+
+The bookend composition is identified by `renderLayout: "video-bookends"`, with `movie_duration_seconds` selecting its runtime. Each clip's native audio follows its place in the sequence (3–11 seconds for the default 15-second cut); a licensed music bed is optional, not required for generated audio. Approved storyboard references and the director plan remain available even though intermediate still images are not inserted into this cut. Existing movies are not changed when another duration is selected.
+
+Explicit retry preserves approved work, including completed segments of longer movies. Interrupted end-frame preparation can resume before the first video submission; an already submitted video operation is resumed by ID. If a paid submission may have started but its ID is missing, the app blocks blind resubmission rather than repeatedly accepting retries that cannot progress.
 
 Dwight's current `demo-car-v1` brief instead describes an unbranded synthetic concept, with its own scenes, on-screen copy, CTA, and duration. The media service respects that brief; it does not convert it into a Tesla or Toyota advertisement.
 

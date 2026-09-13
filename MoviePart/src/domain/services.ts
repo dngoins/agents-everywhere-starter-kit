@@ -1,6 +1,6 @@
 import type {
   AssetRecord, CharacterReference, Consent, JobStatus, MoviePlan, PersonalizationProfile,
-  ProductReference, RenderResult, SceneTemplate, StoryboardFrame, VideoArtifact, StoryFormat, HeroMode, ProductionMode, VideoProviderId,
+  ProductReference, RenderResult, SceneTemplate, StoryboardFrame, VideoArtifact, StoryFormat, HeroMode, ProductionMode, VideoProviderId, RenderLayout, MovieDuration, MovieJob,
 } from "./index";
 
 export interface MovieConfig {
@@ -39,11 +39,15 @@ export interface GenerationContext {
   report(update: { stage: JobStatus; message: string; provider?: string; shotId?: string }): Promise<void>;
   warn(message: string): Promise<void>;
   recordOperation(provider: string, id: string): Promise<void>;
+  /** Persist the at-most-once guard immediately before a paid video submission. */
+  beforeVideoSubmission?(): Promise<void>;
   saveFrame(frame: StoryboardFrame): Promise<void>;
   saveSceneFrame?(frame: StoryboardFrame): Promise<void>;
   getFrames?(): Promise<StoryboardFrame[]>;
   finalizeStoryboard?(): Promise<StoryboardFrame[]>;
 }
+
+export type MovieCheckpoint = (patch: Partial<Pick<MovieJob, "character" | "plan" | "hero" | "heroAttempted" | "result" | "videoSegments">>) => Promise<void>;
 
 export interface ReferenceService {
   extract(input: { assetIds: string[]; primaryAssetId: string; consent: Consent }, context: GenerationContext): Promise<CharacterReference>;
@@ -60,9 +64,10 @@ export interface StoryboardService {
 export interface VideoService {
   generate(input: {
     plan: MoviePlan; character: CharacterReference; product: ProductReference; frames: StoryboardFrame[]; operationId?: string;
+    continuation?: { assetId: string; index: number; count: number };
   }, context: GenerationContext): Promise<VideoArtifact | null>;
 }
 export interface RendererService {
   ready(): Promise<{ available: boolean; message: string }>;
-  render(input: { plan: MoviePlan; frames: StoryboardFrame[]; hero: VideoArtifact | null; productionMode?: ProductionMode }, context: GenerationContext): Promise<RenderResult>;
+  render(input: { plan: MoviePlan; frames: StoryboardFrame[]; hero: VideoArtifact | null; videoClips?: VideoArtifact[]; productionMode?: ProductionMode; renderLayout?: RenderLayout; movieDurationSeconds?: MovieDuration }, context: GenerationContext): Promise<RenderResult>;
 }
