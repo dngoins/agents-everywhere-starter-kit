@@ -7,6 +7,7 @@ import test from "node:test";
 import sharp from "sharp";
 import { AcceptedStudioSnapshotSchema } from "../src/contracts/showroom.ts";
 import { createStudioProvider } from "../src/providers/studio.ts";
+import { persistentStudioCredential } from "../scripts/studio-credential.mjs";
 import { createApiHandlers } from "../../MoviePart/src/server/api.ts";
 import { LocalMediaRepository, PRODUCT_OWNER } from "../../MoviePart/src/server/media.ts";
 import { ProductCatalog } from "../../MoviePart/src/server/catalog.ts";
@@ -29,7 +30,8 @@ test("rotating the actual studio API token cannot acknowledge another owner's pe
     id: "tesla-model-y", exteriorColor: "red", interiorColor: "black", permission: "Synthetic offline test images only.",
     exterior: await image("red"), interior: await image("black"),
   });
-  const originalToken = "original-private-studio-token";
+  const launcherRuntime = join(directory, "launcher");
+  const originalToken = await persistentStudioCredential(launcherRuntime);
   const rotatedToken = "rotated-private-studio-token";
   const baseUrl = "http://127.0.0.1:3200";
   const config = {
@@ -132,8 +134,10 @@ test("rotating the actual studio API token cannot acknowledge another owner's pe
   assert.equal((await store.list()).length, 1, "An empty receipt from the new owner says nothing about the old owner's job.");
   assert.ok(await media.getAsset(ownedPhotoId));
 
-  handlers = handlersFor(originalToken);
-  const restored = createStudioProvider({ baseUrl, token: originalToken, directory: receiptDirectory, fetch: transport });
+  const restartedToken = await persistentStudioCredential(launcherRuntime);
+  assert.equal(restartedToken, originalToken);
+  handlers = handlersFor(restartedToken);
+  const restored = createStudioProvider({ baseUrl, token: restartedToken, directory: receiptDirectory, fetch: transport });
   await restored.recoverCleanup();
   assert.equal(JSON.parse(await readFile(receiptPath, "utf8")).cleanupRequired, false);
   assert.equal((await store.list()).length, 0);
