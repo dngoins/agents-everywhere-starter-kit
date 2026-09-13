@@ -12,9 +12,10 @@ export function configFromEnv(env: Record<string, string | undefined> = {}): Ser
   return {
     apiKey: env.OPENAI_API_KEY?.trim() || '',
     models: {
-      voice: model(env.VOICE_MODEL, 'gpt-live-1'),
-      regular: model(env.REGULAR_MODEL, 'gpt-5.6-luna'),
-      highend: model(env.HIGHEND_MODEL, 'gpt-6-astra'),
+      voice: model(env.VOICE_MODEL, DEFAULT_LIVE_MODELS.voice),
+      regular: model(env.REGULAR_MODEL, DEFAULT_LIVE_MODELS.regular),
+      highend: model(env.HIGHEND_MODEL, DEFAULT_LIVE_MODELS.highend),
     },
   };
 }
+import { DEFAULT_LIVE_MODELS } from '@magicpitch/showroom-runtime/server';
