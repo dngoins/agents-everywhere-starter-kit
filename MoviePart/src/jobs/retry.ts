@@ -17,7 +17,7 @@ export function retrySummary(job: MovieJob): MovieRetrySummary {
     && !job.operations.some(operation => operation.provider === "Google Veo");
   return {
     attempt: job.retries?.length ?? 0,
-    eligible: job.status === "FAILED" && !!job.plan && !!job.character && !uncertainVeoSubmission && !hasUncertainVideoSegment(job) && (!job.result || productionModeOf(job) === "movie-first"),
+    eligible: job.status === "FAILED" && job.error?.code !== "JOB_CANCELLED" && !!job.plan && !!job.character && !uncertainVeoSubmission && !hasUncertainVideoSegment(job) && (!job.result || productionModeOf(job) === "movie-first"),
     approvedShots,
     remainingShots: (job.plan?.shots.length ?? 0) - (productionModeOf(job) === "movie-first" ? usable : approvedShots),
   };
