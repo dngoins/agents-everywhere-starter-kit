@@ -232,6 +232,11 @@ npm --prefix FinalProject test -- test\kiosk-config.test.ts
 Set-Location MoviePart
 node --import tsx --test tests\showroom-gateway.test.ts tests\launcher-isolation.test.ts
 node node_modules\typescript\bin\tsc -p tsconfig.showroom-gateway.json
-# After npm run build; uses ephemeral loopback servers and a fake upstream:
-node --test integration-tests\showroom-gateway.test.mjs
+# After building MoviePart and FinalProject; ephemeral loopback servers only:
+node --import tsx --test integration-tests\showroom-gateway.test.mjs
 ```
+
+The HTTP checks include both a fake upstream for transport boundaries and the
+real FinalProject fixture API with the real kiosk client/controller, generated
+test JPEGs and simulated browser playback events. They do not open a camera,
+start live voice, invoke film providers, send invitations or enable hardware.
