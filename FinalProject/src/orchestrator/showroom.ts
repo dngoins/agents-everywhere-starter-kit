@@ -138,7 +138,9 @@ export class ShowroomService {
 
   async action(sessionId: string, input: unknown): Promise<ShowroomSnapshot> {
     const action = ShowroomActionSchema.parse(input);
-    return this.serial(sessionId, async () => {
+    const immediate = action.type === 'stop_requested'
+      || (action.type === 'consent_recorded' && this.withdraws(this.record(sessionId), action.payload));
+    const execute = async () => {
       const record = this.record(sessionId);
       const view = record.view;
       const digest = fingerprint(action);
@@ -148,7 +150,9 @@ export class ShowroomService {
         return { ...this.snapshot(sessionId), acknowledgement: { eventId: action.eventId, revision: previous.revision } };
       }
       this.mutable(record);
-      assertExpectedRevision(action.expectedRevision, this.options.authority.session(sessionId).revision);
+      if (action.type !== 'stop_requested' && !(action.type === 'consent_recorded' && this.withdraws(record, action.payload))) {
+        assertExpectedRevision(action.expectedRevision, this.options.authority.session(sessionId).revision);
+      }
       if (record.receipts.size >= 256 && action.type !== 'stop_requested'
           && !(action.type === 'consent_recorded' && this.withdraws(record, action.payload))) {
         throw new ApiError(429, 'EVENT_LIMIT', 'This session reached its mutation limit. Start a new session.');
@@ -157,7 +161,8 @@ export class ShowroomService {
       const revision = this.options.authority.session(sessionId).revision;
       record.receipts.set(action.eventId, { fingerprint: digest, revision });
       return { ...this.snapshot(sessionId), acknowledgement: { eventId: action.eventId, revision } };
-    });
+    };
+    return immediate ? execute() : this.serial(sessionId, execute);
   }
 
   private withdraws(record: SessionRecord, next: { [K in keyof NonNullable<ShowroomSnapshot['consent']>]?: unknown }): boolean {
@@ -344,6 +349,7 @@ export class ShowroomService {
       case 'consent':
         this.inputChanged(record);
         view.consent = { ...pending.payload, consentId: randomUUID(), recordedAt: this.now(), inputRevision: view.inputRevision };
+        if (view.captureSet) view.captureSet = { ...view.captureSet, consentId: view.consent.consentId };
         view.state = pending.payload.capture ? 'capture' : 'intake';
         this.bump(record, 'showroom_consent_confirmed');
         break;
@@ -353,7 +359,7 @@ export class ShowroomService {
         if (answer.field === 'visitor') {
           if (view.visitor && view.visitor.displayName !== answer.value.displayName) {
             for (const assetId of record.photos.keys()) this.options.authority.deleteAsset(view.sessionId, assetId);
-            record.photos.clear(); view.captureSet = null; view.consent = null;
+            record.photos.clear(); view.captureSet = null; view.consent = null; view.context = null;
           }
           view.visitor = { visitorId: view.visitor?.visitorId ?? randomUUID(), sessionId: view.sessionId, source: 'self_reported', displayName: answer.value.displayName };
         } else if (answer.field === 'context') view.context = clone(answer.value);
