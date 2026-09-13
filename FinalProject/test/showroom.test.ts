@@ -187,46 +187,6 @@ test('HTTP pairing is one-time and reference/showroom routes require the same se
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 
-  test('motion approval alone never pulses; fresh tracking uses a bounded grant and exact retries do not move twice', async t => {
-    let now = Date.now();
-    let pulses = 0;
-    const bridge: BridgeStatus = {
-      bridgeId: randomUUID(), connected: true, armed: true, stopped: true, leaseGeneration: 1,
-      leaseId: randomUUID(), leaseExpiresAt: now + 30_000, lastHeartbeatAt: now,
-    };
-    const motion: ShowroomMotion = {
-      sessionState: () => bridge,
-      stopSession: () => null,
-      authorizeMotion: async (sessionId, intent) => ({
-        commandId: randomUUID(), bridgeId: bridge.bridgeId, sessionId,
-        leaseId: intent.leaseId, leaseGeneration: intent.leaseGeneration, sequence: ++pulses,
-        issuedAt: now, expiresAt: now + 1000, type: 'motion', intent: intent.intent,
-        speed: 'low', pulseMs: intent.pulseMs, tracking: intent.tracking,
-      }),
-    };
-    const f = await setup(t, { motion, now: () => now });
-    await f.action('consent_recorded', { ...consent, motion: true }); await f.confirm();
-    const intent = { intent: 'reverse_for_half_body', speed: 'low', pulseMs: 500, leaseId: bridge.leaseId, leaseGeneration: 1 };
-    await f.action('motion_requested', intent);
-    await f.confirm();
-    assert.equal(pulses, 0);
-    const grantId = f.snapshot().motionGrant!.grantId;
-    const tracking = () => ({ capturedAt: new Date(now).toISOString(), confidence: 0.95, personCount: 1, goal: 'half_body', centerX: 0.5, centerY: 0.5, bodyOccupancy: 0.9 });
-    const event = { schemaVersion: 1, eventId: randomUUID(), expectedRevision: f.snapshot().revision,
-      type: 'motion_execution_requested', payload: { grantId, tracking: tracking() } };
-    await f.service.action(f.created.sessionId, event);
-    await f.service.action(f.created.sessionId, event);
-    assert.equal(pulses, 1);
-    for (let index = 0; index < 3; index++) {
-      now += 1000;
-      await f.action('motion_execution_requested', { grantId, tracking: tracking() });
-    }
-    now += 1000;
-    await assert.rejects(f.action('motion_execution_requested', { grantId, tracking: tracking() }), /budget/);
-    assert.equal(pulses, 4);
-    await f.action('stop_requested', { reason: 'user' });
-    assert.equal(f.snapshot().motionGrant, null);
-  });
   assert.equal((await request('/v1/operator/kiosk-pairings', undefined, {})).status, 401);
   const issued = await request('/v1/operator/kiosk-pairings', config.SHOWROOM_OPERATOR_TOKEN, {});
   assert.equal(issued.status, 201);
@@ -242,4 +202,86 @@ test('HTTP pairing is one-time and reference/showroom routes require the same se
   const readiness = await (await request('/readyz')).json();
   assert.equal(readiness.showroom.mode, 'fixture');
   assert.equal(readiness.showroom.voice.enabled, false);
+  const stop = { schemaVersion: 1, eventId: randomUUID(), expectedRevision: 0, type: 'stop_requested', payload: { reason: 'user' } };
+  assert.equal((await request(`/v1/sessions/${session.sessionId}/showroom/actions`, undefined, stop)).status, 401);
+  assert.equal((await request(`/v1/sessions/${session.sessionId}/showroom/actions`, f.created.sessionToken, stop)).status, 401);
+});
+
+test('motion approval alone never pulses; fresh tracking uses a bounded grant and exact retries do not move twice', async t => {
+  let now = Date.now();
+  let pulses = 0;
+  const bridge: BridgeStatus = {
+    bridgeId: randomUUID(), connected: true, armed: true, stopped: true, leaseGeneration: 1,
+    leaseId: randomUUID(), leaseExpiresAt: now + 30_000, lastHeartbeatAt: now,
+  };
+  const motion: ShowroomMotion = {
+    sessionState: () => bridge,
+    stopSession: () => null,
+    authorizeMotion: async (sessionId, intent) => ({
+      commandId: randomUUID(), bridgeId: bridge.bridgeId, sessionId,
+      leaseId: intent.leaseId, leaseGeneration: intent.leaseGeneration, sequence: ++pulses,
+      issuedAt: now, expiresAt: now + 1000, type: 'motion', intent: intent.intent,
+      speed: 'low', pulseMs: intent.pulseMs, tracking: intent.tracking,
+    }),
+  };
+  const f = await setup(t, { motion, now: () => now });
+  await f.action('consent_recorded', { ...consent, motion: true }); await f.confirm();
+  const intent = { intent: 'reverse_for_half_body', speed: 'low', pulseMs: 500, leaseId: bridge.leaseId, leaseGeneration: 1 };
+  await f.action('motion_requested', intent); await f.confirm();
+  assert.equal(pulses, 0);
+  const grantId = f.snapshot().motionGrant!.grantId;
+  const tracking = () => ({ capturedAt: new Date(now).toISOString(), confidence: 0.95, personCount: 1, goal: 'half_body', centerX: 0.5, centerY: 0.5, bodyOccupancy: 0.9 });
+  const event = { schemaVersion: 1, eventId: randomUUID(), expectedRevision: f.snapshot().revision,
+    type: 'motion_execution_requested', payload: { grantId, tracking: tracking() } };
+  await f.service.action(f.created.sessionId, event); await f.service.action(f.created.sessionId, event);
+  assert.equal(pulses, 1);
+  for (let index = 0; index < 3; index++) {
+    now += 1000; await f.action('motion_execution_requested', { grantId, tracking: tracking() });
+  }
+  now += 1000;
+  await assert.rejects(f.action('motion_execution_requested', { grantId, tracking: tracking() }), /budget/);
+  assert.equal(pulses, 4);
+  await f.action('stop_requested', { reason: 'user' }, { expectedRevision: 0 });
+  assert.equal(f.snapshot().motionGrant, null);
+});
+
+test('Stop and consent withdrawal bypass a blocked calendar action and stale revision without cancelling its appointment', async t => {
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  let stops = 0;
+  const calendar: ShowroomCalendar = {
+    draft: (proposal, product) => ({
+      startTime: proposal.startTime, endTime: new Date(Date.parse(proposal.startTime) + 3_600_000).toISOString(),
+      timeZone: 'America/New_York', attendees: [proposal.customerEmail], subject: 'Test drive', location: 'Showroom',
+      productId: product.id, productName: product.name,
+    }),
+    checkAvailability: async () => ({ available: true }),
+    confirm: async () => { entered(); await blocked; return { status: 'created', eventId: 'confirmed-appointment', invitationsRequested: true }; },
+  };
+  const f = await setup(t, { calendar, motion: {
+    sessionState: () => null, stopSession: () => { stops++; },
+    authorizeMotion: async () => { throw new Error('No hardware'); },
+  } });
+  t.after(release);
+  const ready = await f.movie();
+  if (ready.studio.status !== 'ready') throw new Error('Expected ready');
+  const playback = { jobId: ready.studio.jobId, assetId: ready.studio.assetId, playbackId: randomUUID() };
+  await f.action('playback_started', playback); await f.action('playback_ended', playback);
+  await f.action('consent_recorded', { ...consent, calendar: true }); await f.confirm();
+  await f.action('calendar_draft_proposed', { startTime: '2026-09-20T15:00:00-04:00', customerEmail: 'customer@example.test' });
+  const pending = f.confirm();
+  await started;
+  const stopEventId = randomUUID();
+  const stop = await f.action('stop_requested', { reason: 'user' }, { expectedRevision: 0, eventId: stopEventId });
+  assert.equal(stop.calendar.status, 'submitting');
+  assert.ok(stops > 0);
+  const count = stops;
+  await f.action('stop_requested', { reason: 'user' }, { expectedRevision: 0, eventId: stopEventId });
+  assert.equal(stops, count);
+  const ended = await f.action('consent_recorded', { ...consent, capture: false, calendar: true }, { expectedRevision: 0 });
+  assert.equal(ended.state, 'cancelled');
+  assert.throws(() => f.orchestrator.asset(f.created.sessionId, playback.assetId), /not available/);
+  release(); await pending;
+  assert.equal(f.snapshot().calendar.status, 'scheduled');
 });
