@@ -199,6 +199,47 @@ test("required Veo preserves a safe review failure instead of reporting that ani
   assert.ok(f.records.some(asset => asset.kind === "video"), "Keep the generated clip when review fails");
 });
 
+test("finished Veo failures expose safe categories instead of raw provider messages or retry advice", async () => {
+  const cases: { fields: Partial<GenerateVideosOperation>; code: string; message: RegExp }[] = [
+    { fields: { response: { raiMediaFilteredCount: 1, raiMediaFilteredReasons: ["PRIVATE_PROMPT_SENTINEL"] } }, code: "VEO_CONTENT_FILTERED", message: /safety rules/ },
+    { fields: { response: { raiMediaFilteredReasons: ["PRIVATE_PROMPT_SENTINEL"] } }, code: "VEO_CONTENT_FILTERED", message: /safety rules/ },
+    { fields: { error: { code: 3, message: "PRIVATE_PROMPT_SENTINEL" } }, code: "VEO_OPERATION_INVALID", message: /invalid input/ },
+    { fields: { error: { code: 8, message: "PRIVATE_PROMPT_SENTINEL" } }, code: "VEO_OPERATION_QUOTA", message: /quota or capacity/ },
+    { fields: { error: { status: "PERMISSION_DENIED", message: "PRIVATE_PROMPT_SENTINEL" } }, code: "VEO_OPERATION_ACCESS", message: /permission/ },
+    { fields: { error: { code: 13, message: "PRIVATE_PROMPT_SENTINEL" } }, code: "VEO_OPERATION_UNAVAILABLE", message: /internal error/ },
+    { fields: { error: { code: 123456, status: "PRIVATE_PROMPT_SENTINEL", message: "PRIVATE_PROMPT_SENTINEL" } }, code: "VEO_GENERATION_FAILED", message: /does not identify whether/ },
+  ];
+  for (const sample of cases) {
+    const f = await fixture();
+    f.input.plan.videoProvider = "google-veo";
+    const operationId = "models/veo-3.1-generate-preview/operations/failed";
+    f.transport.generate = async () => assert.fail("A saved operation must never be resubmitted");
+    f.dependencies.endFrame = async () => assert.fail("A saved operation must not regenerate images");
+    f.transport.poll = async () => operation({ ...sample.fields, name: operationId, done: true });
+    await assert.rejects(createVeoService(config, f.dependencies).generate({ ...f.input, operationId }, f.context), (error: unknown) => {
+      assert.ok(error instanceof MovieError);
+      assert.equal(error.code, sample.code);
+      assert.match(error.message, sample.message);
+      assert.match(error.message, /operation has ended.*retrying it cannot restart generation/);
+      assert.doesNotMatch(error.message, /PRIVATE_PROMPT_SENTINEL/);
+      return true;
+    });
+    assert.equal(f.warnings.length, 1);
+    assert.doesNotMatch(f.warnings[0], /PRIVATE_PROMPT_SENTINEL/);
+    assert.equal(f.records.some(asset => asset.kind === "video"), false);
+  }
+});
+
+test("unfinished Veo operations remain resumable even when the polling window ends", async () => {
+  const f = await fixture();
+  f.input.plan.videoProvider = "google-veo";
+  f.transport.generate = async () => assert.fail("Never submit a second video while polling an existing operation");
+  f.transport.poll = async () => operation({ name: "models/veo/operations/pending", done: false });
+  await assert.rejects(createVeoService(config, { ...f.dependencies, maxPolls: 1 }).generate({
+    ...f.input, operationId: "models/veo/operations/pending",
+  }, f.context), (error: unknown) => error instanceof MovieError && error.code === "VEO_PENDING" && /Retry to resume/.test(error.message));
+});
+
 test("Veo uses the configured practical review threshold and rejects invalid resume identifiers without calls", async () => {
   const f = await fixture();
   f.input.plan.videoProvider = "google-veo";

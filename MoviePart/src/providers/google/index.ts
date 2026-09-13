@@ -11,6 +11,7 @@ import { downloadVeoVideo, MAX_VIDEO_BYTES } from "../../video/download";
 import { inspectVideo } from "../../video/inspect";
 import { isFrameApproved, selectStoryboardFrames } from "../../domain/storyboard-state";
 import { validateApprovedFrame } from "../../jobs/retry";
+import { veoOperationFailure } from "../../domain/veo-failure";
 
 export interface VeoTransport {
   generate(input: GenerateVideosParameters): Promise<GenerateVideosOperation>;
@@ -145,9 +146,8 @@ export function createVeoService(config: MovieConfig, dependencies: VeoDependenc
         }
         signal.throwIfAborted();
         if (!operation.done) throw new MovieError("VEO_PENDING", "Google Veo exceeded the bounded polling window. Retry to resume the retained operation without submitting another video.", 503);
-        if (operation.error || operation.response?.raiMediaFilteredCount) {
-          throw new MovieError("VEO_GENERATION_FAILED", "Google Veo rejected or could not complete the hero clip. The operation ID was retained; no replacement was submitted.", 502);
-        }
+        const failure = veoOperationFailure(operation);
+        if (failure) throw failure;
         phase = "download";
         const video = operation.response?.generatedVideos?.[0]?.video;
         if (!video || (video.mimeType && video.mimeType !== "video/mp4")) throw new MovieError("INVALID_HERO_VIDEO", "Veo did not return an MP4 clip.");

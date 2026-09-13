@@ -8,6 +8,7 @@ import { atomicWrite, isMissing, processAlive, readJson, withDiskLock } from "..
 import type { LocalMediaRepository } from "../server/media";
 import { retrySummary, validateSavedPlan } from "./retry";
 import { assertJobNotCancelled, jobReceiptSchema, referencedAssets, type JobReceipt } from "./lifecycle";
+import { assertVeoRecoverable } from "../domain/veo-failure";
 
 export const WORKER_HEARTBEAT_MS = 3_000;
 export const WORKER_STALE_MS = 15_000;
@@ -175,6 +176,7 @@ export class JobStore {
       if (previous) return previous;
       const job = await this.getOwned(id, ownerId);
       assertJobNotCancelled(job);
+      assertVeoRecoverable(job.error?.code);
       if (request.expected_attempt !== (job.retries?.length ?? 0)) {
         throw new MovieError("STALE_RETRY", "Another retry was already accepted. Refresh this movie before authorizing another attempt.", 409);
       }
@@ -197,6 +199,7 @@ export class JobStore {
   }
 
   private async requeue(job: MovieJob, request: RetryRequest): Promise<{ job: MovieJob; attempt: number }> {
+    assertVeoRecoverable(job.error?.code);
     const at = new Date().toISOString();
     job.retries = [...(job.retries ?? []), {
       idempotencyKey: request.idempotency_key, expectedAttempt: request.expected_attempt,
@@ -228,6 +231,7 @@ export class JobStore {
     return this.transaction(async () => {
       const job = await this.getOwned(id, ownerId);
       assertJobNotCancelled(job);
+      assertVeoRecoverable(job.error?.code);
       if (await this.isCancellationRequested(id)) throw new MovieError("JOB_CANCELLED", "This movie was cancelled.", 410);
       const previous = job.designerDecisions?.find(item => item.request.idempotency_key === request.idempotency_key);
       if (previous) {

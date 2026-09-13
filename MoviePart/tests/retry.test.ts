@@ -163,6 +163,47 @@ test("retry endpoint preserves the plan and approved assets, and concurrent dupl
   assert.equal((await f.handlers.retryJob(foreign, f.job.id)).status, 404);
 });
 
+test("terminal Veo rejection disables legacy retry and designer resume without touching approved work", async t => {
+  const f = await fixture(t, 6);
+  const operation = { provider: "Google Veo", id: "models/veo-3.1-generate-preview/operations/ended" };
+  const codes = ["VEO_GENERATION_FAILED", "VEO_CONTENT_FILTERED", "VEO_OPERATION_QUOTA", "VEO_OPERATION_INVALID", "VEO_OPERATION_ACCESS", "VEO_OPERATION_UNAVAILABLE"];
+  for (const code of codes) {
+    const saved = await f.store.update(f.job.id, job => {
+      job.request.enable_hero_video = true;
+      job.request.video_provider = "google-veo";
+      job.plan!.videoProvider = "google-veo";
+      job.heroAttempted = true;
+      job.operations = [operation];
+      job.error = { stage: "GENERATING_HERO", code, message: "Previous generic failure text." };
+    });
+    const view = jobView(saved);
+    assert.equal(view.retry?.eligible, false);
+    assert.equal(view.designerReviewAllowed, false);
+    assert.match(view.error!.message, /operation has ended.*retrying it cannot restart generation/);
+    const reply = await f.handlers.retryJob(f.request(action()), f.job.id);
+    assert.equal(reply.status, 409);
+    assert.equal((await reply.json()).code, "VEO_OPERATION_TERMINAL");
+    await assert.rejects(f.store.decideFrame(f.job.id, ownerId, saved.frames[0].assetId, {
+      idempotency_key: randomUUID(), expected_revision: 0, expected_attempt: 0,
+      action: "keep", note: "Continue with approved frames.", resume: true,
+    }, async () => assert.fail("Do not review a frame for a terminal video"), async () => assert.fail("Do not requeue")),
+    (error: unknown) => error instanceof MovieError && error.code === "VEO_OPERATION_TERMINAL");
+    const after = await f.store.get(f.job.id);
+    assert.equal(after.retries, undefined);
+    assert.deepEqual(after.frames, saved.frames);
+    assert.deepEqual(after.plan, saved.plan);
+    assert.deepEqual(after.operations, [operation]);
+    assert.equal(after.status, "FAILED");
+    for (const frame of after.frames) assert.ok((await f.media.readAsset(frame.assetId)).byteLength);
+  }
+  for (const code of ["VEO_PENDING", "VEO_TIMEOUT", "VEO_WORKFLOW_FAILED", "VEO_CONTINUITY_REJECTED", "OPENAI_CREDITS_EXHAUSTED"]) {
+    const pending = await f.store.update(f.job.id, job => {
+      job.error = { code, stage: "GENERATING_HERO", message: "Recoverable existing operation." };
+    });
+    assert.equal(retrySummary(pending).eligible, true, `${code} must still allow recovering an existing operation or saved clip`);
+  }
+});
+
 test("real worker resumes shots 3-6 with saved corrections and produces a full MP4 without replanning", async t => {
   const f = await fixture(t);
   const edits: { shotId: string; corrections: string[] }[] = [];

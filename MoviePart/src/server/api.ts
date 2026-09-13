@@ -16,6 +16,7 @@ import { uploadProductReferences } from "./product-upload";
 import { retrySummary, validateApprovedFrame, validateRetryAssets } from "../jobs/retry";
 import { lifecycleKeySchema } from "../jobs/lifecycle";
 import { UploadBatchStore } from "./upload-batches";
+import { terminalVeoMessage } from "../domain/veo-failure";
 
 const privateHeaders = {
   "cache-control": "private, no-store",
@@ -41,12 +42,13 @@ export function assetView(asset: AssetRecord): AssetView {
 
 export function jobView(job: MovieJob): JobView {
   const retry = retrySummary(job);
+  const terminalVeo = terminalVeoMessage(job.error?.code);
   const movieFirst = productionModeOf(job) === "movie-first";
   const requiredVideoPresent = job.request.video_provider === "openai-sora" ? job.hero?.provider === "OpenAI Sora"
     : job.request.video_provider === "google-veo" ? job.hero?.provider === "Google Veo" : true;
   return {
     id: job.id, sessionId: job.request.session_id, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt,
-    events: job.events, warnings: job.warnings, error: job.error, character: job.character, plan: job.plan,
+    events: job.events, warnings: job.warnings, error: job.error && terminalVeo ? { ...job.error, message: terminalVeo } : job.error, character: job.character, plan: job.plan,
     frames: movieFirst ? job.frames.filter(frame => frame.source === "extracted") : job.frames, hero: job.hero,
     productionMode: productionModeOf(job),
     renderLayout: job.result?.renderLayout ?? job.request.render_layout ?? "storyboard",
@@ -57,7 +59,7 @@ export function jobView(job: MovieJob): JobView {
     result: job.error?.code === "JOB_CANCELLED" || !requiredVideoPresent ? null : movieFirst ? job.result : job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
     retry,
     reviewRevision: job.designerDecisions?.length ?? 0,
-    designerReviewAllowed: job.error?.code !== "JOB_CANCELLED" && !!job.plan && !job.result && (job.status === "FAILED" || !job.storyboardLocked && ["STORYBOARDING", "VALIDATING"].includes(job.status)),
+    designerReviewAllowed: job.error?.code !== "JOB_CANCELLED" && !terminalVeo && !!job.plan && !job.result && (job.status === "FAILED" || !job.storyboardLocked && ["STORYBOARDING", "VALIDATING"].includes(job.status)),
   };
 }
 
