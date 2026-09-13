@@ -8,6 +8,8 @@ export const heroModeSchema = z.enum(["LIKENESS", "POV", "PERSONALIZED"]);
 export type HeroMode = z.infer<typeof heroModeSchema>;
 export const productionModeSchema = z.enum(["reviewed-storyboard", "movie-first"]);
 export type ProductionMode = z.infer<typeof productionModeSchema>;
+export const renderLayoutSchema = z.enum(["storyboard", "video-bookends"]);
+export type RenderLayout = z.infer<typeof renderLayoutSchema>;
 export const videoProviderSchema = z.enum(["openai-sora", "google-veo"]);
 export type VideoProviderId = z.infer<typeof videoProviderSchema>;
 export const isOpenAIHero = (plan: { videoProvider?: VideoProviderId; heroShotId: string }, shotId: string) =>
@@ -28,6 +30,15 @@ export function getTimeline(format?: StoryFormat, templateId?: TemplateId): {
     shotIds: shotIdSchema.options.slice(0, durations.length),
     durations, heroShotId: six ? "shot_04" : "shot_03",
     durationSeconds: durations.reduce((sum, value) => sum + value, 0),
+  };
+}
+
+export function getRenderTimeline(format?: StoryFormat, templateId?: TemplateId, layout?: RenderLayout): ReturnType<typeof getTimeline> {
+  const timeline = getTimeline(format, templateId);
+  if (layout !== "video-bookends") return timeline;
+  return {
+    shotIds: [timeline.shotIds[0], timeline.heroShotId, timeline.shotIds[timeline.shotIds.length - 1]],
+    durations: [3, 8, 4], heroShotId: timeline.heroShotId, durationSeconds: 15,
   };
 }
 export const imageMimeSchema = z.enum(["image/jpeg", "image/png", "image/webp"]);
@@ -238,6 +249,7 @@ export const renderResultSchema = z.object({
   mode: z.enum(["storyboard-motion", "hybrid-video", "image-motion"]),
   durationSeconds: z.number(),
   hasAudio: z.boolean(),
+  renderLayout: renderLayoutSchema.optional(),
 }).strict();
 export type RenderResult = z.infer<typeof renderResultSchema>;
 
@@ -253,10 +265,14 @@ export const jobRequestSchema = z.object({
   story_format: storyFormatSchema.optional(),
   hero_mode: heroModeSchema.optional(),
   production_mode: productionModeSchema.optional(),
+  render_layout: renderLayoutSchema.optional(),
   enable_hero_video: z.boolean().default(false),
   video_provider: videoProviderSchema.optional(),
   idempotency_key: z.string().min(8).max(120),
 }).strict().superRefine((value, ctx) => {
+  if (value.render_layout === "video-bookends" && (!value.enable_hero_video || !value.video_provider || value.production_mode === "movie-first")) {
+    ctx.addIssue({ code: "custom", message: "Video bookends require reviewed storyboards and an explicitly selected video provider." });
+  }
   if (value.video_provider && (!value.enable_hero_video || value.production_mode === "movie-first")) {
     ctx.addIssue({ code: "custom", message: "A selected video provider requires reviewed storyboards and an enabled hero video." });
   }

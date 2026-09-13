@@ -4,10 +4,12 @@ import { isAbsolute, join, resolve } from "node:path";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import {
-  assetSchema, getTimeline, MovieError, moviePlanSchema, storyboardFrameSchema, videoArtifactSchema,
+  assetSchema, getRenderTimeline, getTimeline, MovieError, moviePlanSchema, renderLayoutSchema,
+  storyboardFrameSchema, videoArtifactSchema,
 } from "../domain";
 import type { GenerationContext, MovieConfig, RendererService } from "../domain/services";
-import { buildAssemblyArguments, buildHeroArguments, buildStillArguments } from "./arguments";
+import { buildAssemblyArguments, buildBookendExtractionArguments, buildHeroArguments, buildStillArguments } from "./arguments";
+import { mediaCommandPath } from "./paths";
 import { probeMedia, validateRenderedMedia } from "./probe";
 import { runMediaCommand, throwIfRenderCancelled } from "./process";
 import { isFrameApproved } from "../domain/storyboard-state";
@@ -17,7 +19,7 @@ type RenderInput = Parameters<RendererService["render"]>[0];
 export function validateRenderInput(input: RenderInput, jobId: string): void {
   if (
     !assetSchema.shape.id.safeParse(jobId).success || !moviePlanSchema.safeParse(input.plan).success
-    || !Array.isArray(input.frames)
+    || !Array.isArray(input.frames) || !renderLayoutSchema.optional().safeParse(input.renderLayout).success
   ) {
     throw new MovieError("INVALID_RENDER_INPUT", "Rendering requires a valid job and planned, approved storyboard frames.", 400);
   }
@@ -43,6 +45,9 @@ export function validateRenderInput(input: RenderInput, jobId: string): void {
     !videoArtifactSchema.safeParse(input.hero).success || input.hero.shotId !== timeline.heroShotId
   )) {
     throw new MovieError("INVALID_RENDER_INPUT", `An optional hero video must belong to ${timeline.heroShotId}.`, 400);
+  }
+  if (input.renderLayout === "video-bookends" && (movieFirst || !input.hero)) {
+    throw new MovieError("ANIMATION_REQUIRED", "Video bookends require an approved generated hero clip and a reviewed storyboard. Still-image motion is not a substitute.", 409);
   }
 }
 
@@ -110,7 +115,8 @@ export function createRenderer(config: MovieConfig): RendererService {
       if (requiredProvider && (input.productionMode === "movie-first" || input.hero?.provider !== requiredProvider)) {
         throw new MovieError("ANIMATION_REQUIRED", `Hybrid output requires its generated ${requiredProvider} clip. Still-image motion is not a substitute.`, 409);
       }
-      const timeline = getTimeline(input.plan.storyFormat, input.plan.templateId);
+      const bookends = input.renderLayout === "video-bookends";
+      const timeline = getRenderTimeline(input.plan.storyFormat, input.plan.templateId, input.renderLayout);
       throwIfRenderCancelled(context.signal);
       const readiness = await checkReady(context.signal);
       throwIfRenderCancelled(context.signal);
@@ -123,6 +129,7 @@ export function createRenderer(config: MovieConfig): RendererService {
         directory = await createWorkDirectory(config, context.jobId);
         const sources = await Promise.all(input.frames.map(async frame =>
           requireLocalFile(await context.media.assetPath(frame.assetId))));
+        const sourcesByShot = new Map(input.frames.map((frame, index) => [frame.shotId, sources[index]]));
         const heroPath = input.hero
           ? await requireLocalFile(await context.media.assetPath(input.hero.assetId)) : undefined;
         const heroHasAudio = heroPath ? (await probeMedia(ffprobe, heroPath, context.signal)).audioStreamCount > 0 : false;
@@ -140,22 +147,60 @@ export function createRenderer(config: MovieConfig): RendererService {
         } else if (!heroHasAudio) {
           await context.warn("No music bed or provider audio is available; the movie will be silent.");
         }
+        let normalizedHeroPath: string | undefined;
+        const bookendSources: string[] = [];
+        if (bookends) {
+          // Keep every saved approval usable without including its still in the movie.
+          for (const source of sources) {
+            await runMediaCommand(ffmpeg!, [
+              "-hide_banner", "-loglevel", "error", "-nostdin", "-xerror",
+              "-protocol_whitelist", "file,pipe", "-err_detect", "explode", "-i", mediaCommandPath(source),
+              "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn", "-f", "null", "-",
+            ], { signal: context.signal, label: "FFmpeg approved frame validation", timeoutMs: 60_000 });
+          }
+          normalizedHeroPath = join(directory, `${timeline.heroShotId}.mp4`);
+          await context.report({
+            stage: "ASSEMBLING", provider: "FFmpeg", shotId: timeline.heroShotId,
+            message: "Normalizing the approved hero video once; its first and last decoded frames will form the two bookends.",
+          });
+          await runMediaCommand(ffmpeg!, buildHeroArguments(heroPath!, normalizedHeroPath, timeline, false), {
+            signal: context.signal, label: "FFmpeg hero normalization",
+          });
+          // No cloned-frame padding: the entire middle must be the approved video.
+          validateRenderedMedia(await probeMedia(ffprobe, normalizedHeroPath, context.signal, true), false, {
+            ...timeline, shotIds: [timeline.heroShotId], durations: [8], durationSeconds: 8,
+          });
+          for (const bookend of ["opening", "closing"] as const) {
+            const imagePath = join(directory, `${bookend}.png`);
+            await runMediaCommand(ffmpeg!, buildBookendExtractionArguments(normalizedHeroPath, imagePath, bookend), {
+              signal: context.signal, label: "FFmpeg bookend extraction", timeoutMs: 60_000,
+            });
+            bookendSources.push(await requireLocalFile(imagePath));
+          }
+        }
         const shotPaths: string[] = [];
         for (let index = 0; index < timeline.shotIds.length; index++) {
           throwIfRenderCancelled(context.signal);
-          const shotId = input.plan.shots[index].id;
+          const shotId = timeline.shotIds[index];
+          if (shotId === timeline.heroShotId && normalizedHeroPath) {
+            shotPaths.push(normalizedHeroPath);
+            continue;
+          }
+          const bookend = bookends ? index === 0 ? "opening" : "closing" : undefined;
           await context.report({
             stage: "ASSEMBLING", provider: "FFmpeg", shotId,
             message: shotId === timeline.heroShotId && heroPath
               ? "Normalizing the approved hero video; its native audio will be aligned separately in the final movie."
-              : input.productionMode === "movie-first"
+              : bookend
+                ? `Animating the approved video's ${bookend === "opening" ? "first" : "last"} frame as the ${bookend} bookend.`
+                : input.productionMode === "movie-first"
                 ? "Creating the movie scene with cinematic image motion."
                 : "Animating the approved storyboard with a gentle centered pan and zoom.",
           });
           const outputPath = join(directory, `${shotId}.mp4`);
           await runMediaCommand(ffmpeg!, shotId === timeline.heroShotId && heroPath
             ? buildHeroArguments(heroPath, outputPath, timeline)
-            : buildStillArguments(sources[index], outputPath, index, timeline), {
+            : buildStillArguments(bookend ? bookendSources[index === 0 ? 0 : 1] : sourcesByShot.get(shotId)!, outputPath, index, timeline, bookend), {
             signal: context.signal, label: "FFmpeg shot encoding",
           });
           shotPaths.push(outputPath);
@@ -182,6 +227,7 @@ export function createRenderer(config: MovieConfig): RendererService {
         return {
           assetId: asset.id, mode: heroPath ? "hybrid-video" : input.productionMode === "movie-first" ? "image-motion" : "storyboard-motion",
           durationSeconds, hasAudio: probe.audioStreamCount > 0,
+          ...(bookends ? { renderLayout: "video-bookends" as const } : {}),
         };
       } catch (error) {
         throw controlledError(error);

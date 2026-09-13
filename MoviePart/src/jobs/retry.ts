@@ -12,9 +12,11 @@ export function retrySummary(job: MovieJob): MovieRetrySummary {
   const approvedShots = frames.filter(isFrameApproved).length;
   const usable = selectStoryboardFrames([...job.frames, ...(job.sceneFrames ?? [])].filter(frame => frame.source !== "extracted"), job.plan?.shots.map(shot => shot.id) ?? [])
     .filter(frame => isFrameApproved(frame) || frame.designerDecision?.action !== "regenerate" && frame.continuity.verdict !== "REJECT").length;
+  const uncertainVeoSubmission = job.request.video_provider === "google-veo" && job.heroAttempted && !job.hero
+    && !job.operations.some(operation => operation.provider === "Google Veo");
   return {
     attempt: job.retries?.length ?? 0,
-    eligible: job.status === "FAILED" && !!job.plan && !!job.character && (!job.result || productionModeOf(job) === "movie-first"),
+    eligible: job.status === "FAILED" && !!job.plan && !!job.character && !uncertainVeoSubmission && (!job.result || productionModeOf(job) === "movie-first"),
     approvedShots,
     remainingShots: (job.plan?.shots.length ?? 0) - (productionModeOf(job) === "movie-first" ? usable : approvedShots),
   };

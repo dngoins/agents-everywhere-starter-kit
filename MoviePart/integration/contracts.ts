@@ -5,6 +5,7 @@
  */
 export type TemplateId = "VELOCITY" | "TOMORROW_DRIVE" | "DREAM_ROUTE" | "HERO_OF_THE_DAY";
 export type ProductionMode = "reviewed-storyboard" | "movie-first";
+export type RenderLayout = "storyboard" | "video-bookends";
 export type VideoProviderId = "openai-sora" | "google-veo";
 export type StoryFormat = "four-shot" | "six-shot";
 export type HeroMode = "LIKENESS" | "POV" | "PERSONALIZED";
@@ -37,6 +38,8 @@ export interface PersonalizationProfile {
 export interface MovieJobRequest {
   schema_version: 1;
   production_mode?: ProductionMode;
+  /** Video bookends: 3-second opening zoom, 8-second real video, 4-second closing zoom. Requires video_provider. */
+  render_layout?: RenderLayout;
   /** Opaque robot/conversation identifier, echoed as JobView.sessionId. */
   session_id: string;
   /** Upload photos first; these are server-issued IDs, never paths or URLs. */
@@ -48,7 +51,7 @@ export interface MovieJobRequest {
   personalization_profile: PersonalizationProfile;
   /** Defaults to DREAM_ROUTE when omitted. */
   preferred_template?: TemplateId;
-  /** Defaults to four-shot (18 seconds); six-shot is 23 seconds, or 24 for HERO_OF_THE_DAY. */
+  /** Reference-plan format. Legacy output is 18/23/24 seconds; video-bookends output is always 15 seconds. */
   story_format?: StoryFormat;
   /** Defaults to LIKENESS. POV/PERSONALIZED never send customer photos to providers. */
   hero_mode?: HeroMode;
@@ -206,6 +209,7 @@ export interface RenderResult {
   mode: "storyboard-motion" | "hybrid-video" | "image-motion";
   durationSeconds: number;
   hasAudio: boolean;
+  renderLayout?: RenderLayout;
 }
 
 export interface JobEvent {
@@ -248,6 +252,7 @@ export interface JobView {
   sessionId: string;
   status: JobStatus;
   productionMode?: ProductionMode;
+  renderLayout?: RenderLayout;
   createdAt: string;
   updatedAt: string;
   events: JobEvent[];

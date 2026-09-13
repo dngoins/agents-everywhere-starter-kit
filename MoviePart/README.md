@@ -18,7 +18,11 @@ The kiosk's photo control uses the tablet/browser's file or camera picker after 
 
 ## The workflow
 
+Worker heartbeat and lost-lease failures are reported as errors and exit nonzero, while intentional `SIGINT`/`SIGTERM` shutdowns are logged separately. A stopped worker never automatically resubmits paid operations; saved plans, approvals and generated assets remain available for explicit recovery.
+
 The studio defaults to **reviewed storyboards with required Google Veo animation**. Astra handles vision/direction, Flare creates the stills, and Veo creates an eight-second moving clip after approval. Pan/zoom animation of a photograph does not satisfy the animation requirement.
+
+The default final cut is **15 seconds: a 3-second opening zoom, 8 seconds of real generated video, and a 4-second closing zoom**. The two bookend images are extracted from the approved video's exact first and last normalized frames. There are no still-only shots in the middle. The four/six-shot storyboard remains the approved reference plan, not a promise to insert every reference image into this cut. The studio sends `render_layout: "video-bookends"`; API callers omitting it retain the legacy storyboard layout.
 
 `davici.ai` is a parked domain; the similarly named `davinci.ai` is a media platform, but a supported developer API has not been verified. No customer images or credentials are sent there. The supplied prerecorded example can be used for the default demo independently of a generation provider.
 
@@ -170,6 +174,10 @@ Each explicit retry uses the configured per-shot attempt budget (eight by defaul
 
 For reviewed production, if every shot already passed and assembly failed, the API can **Retry final assembly**. A saved hero clip is reused; an optional hero-video attempt already recorded is not automatically resubmitted. Reviewed production requires every storyboard shot to pass; movie-first production requires complete usable scene media and a validated MP4, not continuity approval.
 
+For required Veo movies, an explicit retry resumes the saved Google operation when generation, download or validation was interrupted. It does not regenerate the storyboard endpoints or submit another video. Validation may incur a vision-model charge; billing, rate-limit and review errors are reported directly rather than claiming that no animation was generated. Untracked submissions are never automatically repeated.
+
+Endpoint preparation is separate from video submission: the durable video-attempt guard is written only after the end frame is approved, immediately before calling Veo. An interrupted preparation can therefore resume on explicit retry, retaining the main storyboard and any approved endpoint. If submission began but no operation ID was saved, recovery is blocked with an explicit uncertain-submission message instead of offering retries that cannot progress.
+
 Retry uses the saved movie settings, not edits in the creation form. Missing or corrupted approved files block recovery instead of silently charging for replacement. Restore those files or explicitly create a new take. Jobs that failed before saving a complete plan need a new take; active and completed jobs cannot be requeued by the retry endpoint.
 
 ### Customer and car references
@@ -186,7 +194,7 @@ The studio now offers **Tesla Model Y** and **Toyota Tundra Hybrid** separately.
 
 The npm dependencies provide local `ffmpeg-static` and `ffprobe-static` binaries. No machine-wide install is required on supported platforms. To use your own binaries, set `FFMPEG_PATH` and `FFPROBE_PATH` to absolute paths.
 
-Hybrid movies preserve the generated hero clip's native audio, synchronized to its shot (starting at 6 seconds for four-shot stories, or 8/9 seconds for six-shot stories). Short audio is padded with silence, not looped; still-image shots have no generated soundtrack. Optional `MOVIE_MUSIC_PATH` points to a local music file you have permission to use and is mixed underneath native audio across the full movie. Only movies with neither source are silent, and the UI/manifest reports that explicitly. An audio cue in the director plan is not a generated sound effect.
+Hybrid movies preserve the generated clip's native audio. In the default bookend cut, audio follows the video from **3 to 11 seconds**. Legacy storyboard layouts start native audio at 6 seconds for four-shot stories, or 8/9 seconds for six-shot stories. Short audio is padded with silence, not looped; still-image shots have no generated soundtrack. Optional `MOVIE_MUSIC_PATH` points to a local music file you have permission to use and is mixed underneath native audio across the full movie. Only movies with neither source are silent, and the UI/manifest reports that explicitly. An audio cue in the director plan is not a generated sound effect.
 
 ### Google Veo animation
 
@@ -197,7 +205,7 @@ VEO_MODEL=veo-3.1-generate-preview
 
 The studio selects Google Veo by default. Configure `GEMINI_API_KEY` in the private `MoviePart\.env`, keep `VEO_MODEL=veo-3.1-generate-preview`, and restart the studio and worker. An OpenAI key cannot authenticate to Google.
 
-New studio jobs send `enable_hero_video: true` and `video_provider: "google-veo"`. Approved hero start/end frames guide the eight-second generated clip. If Google access, quota, generation or validation fails, the job stops; **no still-only slideshow is substituted for a required animation**.
+New studio jobs send `enable_hero_video: true`, `video_provider: "google-veo"` and `render_layout: "video-bookends"`. Approved hero start/end frames guide the eight-second generated clip. If Google access, quota, generation or validation fails, the job stops; **no still-only slideshow is substituted for a required animation**.
 
 Legacy API jobs that omit `video_provider` retain their explicitly optional hero behavior. Image-motion-only output remains a separately selected, clearly labeled mode. Google provider calls may incur charges and require the relevant account's model access.
 
@@ -209,7 +217,7 @@ OPENAI_VIDEO_MODEL=sora-2-pro
 
 If explicitly selecting the temporary OpenAI adapter, `sora-2-pro` is the configured default for higher-quality, more expensive rendering; `sora-2` is the faster alternative. Both use the server-side `OPENAI_API_KEY`; a Google key is not needed. This does not select Sora automatically, and model-list access does not prove billing/quota or a completed video.
 
-The reviewed director plan makes its eight-second hero shot an **exterior car-only scene**, without visible people or human reflections. Customer likeness remains in the approved still shots. The OpenAI video API currently rejects human-face inputs and cannot generate real people, even when the photo owner consents. ChatGPT's web product may expose different capabilities; this application must follow the API restrictions. See [OpenAI's video guide](https://developers.openai.com/api/docs/guides/video-generation).
+The reviewed director plan makes its eight-second hero shot an **exterior car-only scene**, without visible people or human reflections. In the video-bookends layout, the whole final movie is car-only because its bookends come from that clip; customer likeness remains in the reference artifacts, not the film. Legacy storyboard-layout movies may include the approved customer stills. The OpenAI video API currently rejects human-face inputs and cannot generate real people, even when the photo owner consents. ChatGPT's web product may expose different capabilities; this application must follow the API restrictions. See [OpenAI's video guide](https://developers.openai.com/api/docs/guides/video-generation).
 
 The adapter checks the approved hero reference before submission, persists the Sora operation ID, polls with bounded waits, downloads the actual MP4, and validates it before assembly. A pending operation can be resumed by ID rather than submitting another paid video. Unknown acceptance, rejection, invalid video, or missing access is an explicit error. **No still-only fallback is allowed for an OpenAI hybrid request.**
 

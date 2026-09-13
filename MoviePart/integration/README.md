@@ -12,6 +12,8 @@ For Dwight's integrated robot workflow, use the [authoritative Tiya handoff](dwi
 
 `contracts.ts` is the shared TypeScript transport interface. `client.ts` is a small `fetch` client for Node.js 22+ or a same-origin browser.
 
+The studio now opts into `render_layout: "video-bookends"` alongside `enable_hero_video: true` and an explicit `video_provider`. This produces a **15-second** MP4: 3-second zoomed opening frame, 8-second generated clip, 4-second zoomed closing frame. Both stills come from the video's first/last frames, and there are no intermediate still-only shots. Native audio is aligned to 3–11 seconds. `JobView.renderLayout` and `result.renderLayout` identify this layout. Omitted `render_layout` preserves legacy behavior and durations; the director's four/six-reference plan remains unchanged in both layouts.
+
 ## Responsibilities
 
 | Component | Responsibility |

@@ -15,6 +15,7 @@ export class MovieWorker {
   private readonly controller = new AbortController();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatWork: Promise<void> = Promise.resolve();
+  private heartbeatFailure: MovieError | null = null;
   private active: Promise<boolean> | null = null;
   private readonly execute: MovieExecutor;
 
@@ -38,13 +39,19 @@ export class MovieWorker {
     this.heartbeatTimer = setInterval(() => {
       this.heartbeatWork = this.heartbeatWork.then(async () => {
         if (this.token) await this.store.heartbeat(this.token);
-      }).catch(() => { this.controller.abort(); });
+      }).catch(error => {
+        this.heartbeatFailure ??= error instanceof MovieError
+          ? new MovieError(error.code, this.cleanMessage(error.message), error.httpStatus)
+          : new MovieError("WORKER_HEARTBEAT_FAILED", "The movie worker could not refresh its local queue lease. Check the private store and restart the worker; saved work will not be resubmitted automatically.", 503);
+        this.controller.abort();
+      });
     }, WORKER_HEARTBEAT_MS);
     this.heartbeatTimer.unref();
   }
 
   async runOnce(): Promise<boolean> {
     if (!this.token) throw new MovieError("WORKER_NOT_STARTED", "Start the worker before claiming jobs.", 409);
+    if (this.heartbeatFailure) throw this.heartbeatFailure;
     if (this.active) return this.active;
     if (this.controller.signal.aborted) return false;
     this.active = this.processNext(this.token);
@@ -128,8 +135,10 @@ export class MovieWorker {
         const stage = current.status;
         const aborted = this.controller.signal.aborted;
         current.error = {
-          code: aborted ? "WORKER_ABORTED" : error instanceof MovieError ? error.code : "GENERATION_FAILED",
-          message: aborted
+          code: this.heartbeatFailure?.code ?? (aborted ? "WORKER_ABORTED" : error instanceof MovieError ? error.code : "GENERATION_FAILED"),
+          message: this.heartbeatFailure
+            ? `${this.heartbeatFailure.message} Saved artifacts remain available; paid operations will not be repeated automatically.`
+            : aborted
             ? "The local worker was stopped. Saved artifacts remain available; paid operations will not be repeated automatically."
             : error instanceof MovieError ? this.cleanMessage(error.message) : `Generation failed during ${stage}. Saved artifacts were retained.`,
           stage,
@@ -157,6 +166,7 @@ export class MovieWorker {
           });
         }
       }
+      if (this.heartbeatFailure) throw this.heartbeatFailure;
     } finally {
       signal?.removeEventListener("abort", abort);
       await this.stop();

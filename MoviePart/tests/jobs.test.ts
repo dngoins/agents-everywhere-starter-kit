@@ -34,6 +34,51 @@ async function fixture(t: TestContext) {
   return { directory, config, store: new JobStore(directory), media: new LocalMediaRepository(directory) };
 }
 
+test("a heartbeat failure rejects the worker run instead of reporting a successful exit", async t => {
+  const { config, store } = await fixture(t);
+  store.heartbeat = async () => { throw new MovieError("WORKER_LOCK_LOST", "The worker no longer owns the queue.", 409); };
+  const worker = new MovieWorker(config, { store });
+  t.after(() => worker.stop());
+  await assert.rejects(worker.run(AbortSignal.timeout(10_000)),
+    (error: unknown) => error instanceof MovieError && error.code === "WORKER_LOCK_LOST");
+  assert.equal((await store.workerReadiness()).available, false);
+});
+
+test("unexpected heartbeat errors are surfaced without private filesystem details or credentials", async t => {
+  const { config, store } = await fixture(t);
+  store.heartbeat = async () => { throw new Error("private filesystem path and secret-api-key"); };
+  const worker = new MovieWorker(config, { store });
+  t.after(() => worker.stop());
+  await assert.rejects(worker.run(AbortSignal.timeout(10_000)), (error: unknown) => {
+    assert.ok(error instanceof MovieError);
+    assert.equal(error.code, "WORKER_HEARTBEAT_FAILED");
+    assert.doesNotMatch(error.message, /private filesystem path|secret-api-key/);
+    return true;
+  });
+});
+
+test("heartbeat shutdown retains the active job's operation and records the actual lease error", async t => {
+  const { config, store } = await fixture(t);
+  const queued = await store.create("owner", request(), product());
+  store.heartbeat = async () => { throw new MovieError("WORKER_LOCK_LOST", "The worker no longer owns the queue.", 409); };
+  const worker = new MovieWorker(config, { store, execute: async (_job, context) => {
+    await context.report({ stage: "GENERATING_HERO", message: "Existing video operation", provider: "test" });
+    await context.recordOperation("test", "saved-operation");
+    return new Promise<never>((_resolve, reject) => {
+      context.signal.addEventListener("abort", () => reject(context.signal.reason), { once: true });
+      context.signal.throwIfAborted();
+    });
+  } });
+  t.after(() => worker.stop());
+  await assert.rejects(worker.run(AbortSignal.timeout(10_000)),
+    (error: unknown) => error instanceof MovieError && error.code === "WORKER_LOCK_LOST");
+  const failed = await store.get(queued.id);
+  assert.equal(failed.error?.code, "WORKER_LOCK_LOST");
+  assert.equal(failed.error?.stage, "GENERATING_HERO");
+  assert.deepEqual(failed.operations, [{ provider: "test", id: "saved-operation" }]);
+  assert.equal(failed.result, null);
+});
+
 test("idempotency is owner-scoped and concurrent submissions atomically produce one durable job", async t => {
   const { store, directory } = await fixture(t);
   const input = request();

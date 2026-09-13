@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { jobRequestSchema, validatePlan, type MoviePlan } from "../src/domain";
+import { getRenderTimeline, getTimeline, jobRequestSchema, renderResultSchema, validatePlan, type MoviePlan } from "../src/domain";
 import { getTemplate, templates } from "../src/templates";
 
 const profile = { signals: [{ value: "Egypt", source: "manual" as const, visualUseAllowed: true as const, confidence: null }] };
@@ -53,4 +53,35 @@ test("API requires explicit consent and owned primary reference membership", () 
   assert.equal(jobRequestSchema.safeParse({ ...input, primary_reference_asset_id: randomUUID() }).success, false);
   assert.equal(jobRequestSchema.safeParse({ ...input, customer_reference_asset_ids: [id, id] }).success, false);
   assert.equal(jobRequestSchema.safeParse({ ...input, personalization_profile: { signals: Array(4).fill(profile.signals[0]) } }).success, false);
+});
+
+test("video bookends use a separate three-segment output timeline without changing the reference plan", () => {
+  for (const format of ["four-shot", "six-shot"] as const) {
+    for (const template of ["DREAM_ROUTE", "HERO_OF_THE_DAY"] as const) {
+      const original = getTimeline(format, template);
+      const output = getRenderTimeline(format, template, "video-bookends");
+      assert.deepEqual(output.durations, [3, 8, 4]);
+      assert.deepEqual(output.shotIds, [original.shotIds[0], original.heroShotId, original.shotIds.at(-1)]);
+      assert.equal(output.durationSeconds, 15);
+      assert.deepEqual(getRenderTimeline(format, template), original);
+    }
+  }
+  assert.equal(renderResultSchema.parse({
+    assetId: randomUUID(), mode: "hybrid-video", durationSeconds: 15, hasAudio: true, renderLayout: "video-bookends",
+  }).renderLayout, "video-bookends");
+});
+
+test("video-bookend requests require actual generated video and cannot select image-motion fallback", () => {
+  const id = randomUUID();
+  const input = {
+    schema_version: 1, session_id: "bookend-test", customer_reference_asset_ids: [id],
+    primary_reference_asset_id: id, consent: { likeness: true, personalization: true },
+    product_id: "demo-car", personalization_profile: profile, idempotency_key: randomUUID(),
+    enable_hero_video: true, video_provider: "google-veo", render_layout: "video-bookends",
+  };
+  assert.equal(jobRequestSchema.parse(input).render_layout, "video-bookends");
+  assert.equal(jobRequestSchema.safeParse({ ...input, enable_hero_video: false }).success, false);
+  assert.equal(jobRequestSchema.safeParse({ ...input, video_provider: undefined }).success, false);
+  assert.equal(jobRequestSchema.safeParse({ ...input, production_mode: "movie-first" }).success, false);
+  assert.equal(jobRequestSchema.safeParse({ ...input, render_layout: "unknown" }).success, false);
 });

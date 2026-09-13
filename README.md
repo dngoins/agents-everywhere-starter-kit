@@ -123,11 +123,11 @@ Movie Magic builds a controlled film from stable references rather than asking o
 |---|---|
 | Vehicles | Tesla Model Y and Toyota Tundra Hybrid, each requiring its own authorized exterior/interior reference pack. Model 3 reference files are not substituted for Model Y. |
 | Templates | Velocity, Tomorrow Drive, Dream Route, and Hero of the Day |
-| Classic format | Four shots, 18 seconds |
-| Tiya's six-beat format | Six shots, 23 seconds; Hero of the Day is 24 seconds |
+| Classic reference plan | Four reference shots; legacy storyboard-layout output is 18 seconds |
+| Tiya's six-beat reference plan | Six reference shots; legacy storyboard-layout output is 23 seconds, or 24 for Hero of the Day |
 | Hero modes | `LIKENESS` uses approved customer photos; `POV` and `PERSONALIZED` omit customer photos from provider calls |
 | Baseline rendering | Usable scene visuals with pan/zoom, optionally scored with a permitted local audio file; movie-first does not claim continuity approval |
-| Default animation | One required eight-second Veo hero clip; missing or failed animation blocks the hybrid movie |
+| Default animation | 15-second film: 3-second opening zoom, 8-second Veo clip with native audio, 4-second closing zoom. Both stills come from the clip; no still-only shots in the middle |
 | Required OpenAI animation | An eight-second Sora car-only clip after storyboard approval; failure blocks the hybrid movie instead of substituting still-image zooms |
 
 The studio's output is a validated 16:9, 720p, 24 fps MP4. `image-motion` identifies movie-first animated-image output; `storyboard-motion` and `hybrid-video` describe reviewed stills or a hybrid with an existing/generated hero clip. These are **not** the orchestrator's result-provenance labels, and animated stills are not fully AI-generated moving footage.

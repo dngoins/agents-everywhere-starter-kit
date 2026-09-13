@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { vehicleChoice } from "../catalog/vehicles";
 
 export function CarReferences({ productId, ready, onSaved }: {

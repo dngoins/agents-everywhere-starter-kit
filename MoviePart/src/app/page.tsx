@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { AssetView, ConfigView, JobView } from "../domain/http";
-import { getTimeline, type HeroMode, type JobRequest, type JobStatus, type StoryFormat, type TemplateId, type ProductionMode, type VideoProviderId } from "../domain";
+import { getTimeline, getRenderTimeline, type HeroMode, type JobRequest, type JobStatus, type StoryFormat, type TemplateId, type ProductionMode, type VideoProviderId } from "../domain";
 import { allTemplates as templates, getTemplate } from "../templates";
 import { mainStoryboardFrames } from "../lib/storyboard-view";
 import { MovieMagicClient, MovieMagicHttpError } from "../../integration/client";
@@ -214,7 +214,7 @@ export default function MovieStudio() {
             })),
           },
           enable_hero_video: hero,
-          ...(hero && productionMode === "reviewed-storyboard" && videoProvider ? { video_provider: videoProvider } : {}),
+          ...(hero && productionMode === "reviewed-storyboard" && videoProvider ? { video_provider: videoProvider, render_layout: "video-bookends" as const } : {}),
           idempotency_key: crypto.randomUUID(),
         };
         pendingRequest.current = body;
@@ -327,6 +327,10 @@ export default function MovieStudio() {
   const timing = productionTiming(job, clock);
   const movieFirst = (job?.productionMode ?? productionMode) === "movie-first";
   const completeMovie = job && (movieFirst || job.status === "COMPLETED" && approvedCount === shotIds.length) ? job.result : null;
+  const newBookends = productionMode === "reviewed-storyboard" && hero;
+  const renderLayout = job ? job.renderLayout ?? job.result?.renderLayout ?? "storyboard" : newBookends ? "video-bookends" : "storyboard";
+  const bookends = renderLayout === "video-bookends";
+  const outputTimeline = getRenderTimeline(job?.plan?.storyFormat ?? storyFormat, job?.plan?.templateId ?? template, renderLayout);
   return <div className="studio">
     <header className="masthead">
       <a href="/" className="wordmark" aria-label="Movie Magic home"><span className="mark">m<span>m</span></span> movie magic<span className="wordmark-dot">.</span></a>
@@ -336,7 +340,7 @@ export default function MovieStudio() {
     <main>
       <section className="intro">
         <div><p className="eyebrow">THE NEXT GREAT CAR STORY IS YOURS</p><h1>You. In the <em>driver’s seat.</em></h1><p className="intro-copy">Your photos. Your personality. A little movie magic.<br />Turn a test drive of the imagination into your own cinematic moment.</p></div>
-        <div className="format-stamp"><span>{timeline.durationSeconds}</span><div>SECONDS<br />{shotIds.length === 6 ? "SIX" : "FOUR"} SHOTS<br />ONE ORIGINAL STORY</div></div>
+        <div className="format-stamp"><span>{completeMovie?.durationSeconds ?? outputTimeline.durationSeconds}</span><div>SECONDS<br />{bookends ? "2 BOOKENDS + VIDEO" : `${shotIds.length === 6 ? "SIX" : "FOUR"} SHOTS`}<br />ONE ORIGINAL STORY</div></div>
       </section>
 
       <div className="workspace">
@@ -410,15 +414,15 @@ export default function MovieStudio() {
                 : "Every storyboard shot must pass continuity review before rendering."}</p>
               <label className="field-label" htmlFor="story-format">STORY FORMAT</label>
               <select id="story-format" value={storyFormat} onChange={event => { changed(); setStoryFormat(event.target.value as StoryFormat); }}>
-                <option value="four-shot">Classic · four shots · 18 seconds</option>
-                <option value="six-shot">Tiya's story arc · six shots · {template === "HERO_OF_THE_DAY" ? "24" : "23"} seconds</option>
+                <option value="four-shot">Classic · four reference shots · {newBookends ? "15" : "18"}-second movie</option>
+                <option value="six-shot">Tiya's story arc · six reference shots · {newBookends ? "15" : template === "HERO_OF_THE_DAY" ? "24" : "23"}-second movie</option>
               </select>
               <div className="template-options" role="group" aria-label="Movie template">{templates.map((item, index) =>
                 <button key={item.id} type="button" className={`template-option ${template === item.id ? "selected" : ""}`} aria-pressed={template === item.id} onClick={() => { changed(); setTemplate(item.id); }}>
                   <span className="template-index">0{index + 1}</span><span><strong>{item.name}</strong><small>{item.description}</small></span><span className="radio-dot" />
                 </button>)}</div>
               {productionMode === "reviewed-storyboard" && <>
-                <label className="hero-toggle"><input type="checkbox" checked={hero} onChange={event => { changed(); setHero(event.target.checked); setLikeness(false); }} /><span><strong>Include genuine generated animation</strong><small>{hero ? "Approved stills plus an eight-second video-model clip." : "Disabled: output uses still-image motion only."}</small></span></label>
+                <label className="hero-toggle"><input type="checkbox" checked={hero} onChange={event => { changed(); setHero(event.target.checked); setLikeness(false); }} /><span><strong>Include genuine generated animation</strong><small>{hero ? "Opening zoom (3s), real animation (8s), closing zoom (4s). No still-only shots in the middle." : "Disabled: output uses still-image motion only."}</small></span></label>
                 {hero && <>
                   <label className="field-label" htmlFor="video-provider">ANIMATION PROVIDER</label>
                   <select id="video-provider" value={videoProvider} onChange={event => { changed(); setVideoProvider(event.target.value as VideoProviderId); setLikeness(false); }}>
@@ -429,7 +433,7 @@ export default function MovieStudio() {
                   <p className="field-help">{!videoProvider
                     ? "Select an animation provider. The supplied prerecorded demo is separate from generating a new customer movie."
                     : videoProvider === "openai-sora"
-                    ? "Sora generates moving car footage. The customer stays in approved stills; human-face inputs and real-person video are not supported. Failed animation never becomes a slideshow. Temporary integration: OpenAI's announced API shutdown is September 24, 2026."
+                    ? "Sora generates car-only footage; this layout's movie and extracted bookends do not include customer likeness. Human-face inputs and real-person video are not supported. Failed animation never becomes a slideshow. Temporary integration: OpenAI's announced API shutdown is September 24, 2026."
                     : "Veo generates an eight-second moving clip after storyboard approval. It uses your Google API key, not the OpenAI key. If animation fails or credentials are missing, the app stops rather than substituting a slideshow."}</p>
                 </>}
               </>}
@@ -468,7 +472,7 @@ export default function MovieStudio() {
               <span className="screen-bottom">REFERENCE-LED. PERSONALLY DIRECTED.</span>
             </div>}
           </div>
-          {completeMovie && <div className="result-bar"><span><i />{completeMovie.mode === "image-motion" ? "Image-motion output · not generated video footage" : completeMovie.mode === "hybrid-video" ? `Hybrid film · ${job?.hero?.provider ?? "generated"} animation + stills` : "Storyboard-motion film"} · {completeMovie.durationSeconds.toFixed(1)}s{!completeMovie.hasAudio ? " · No audio" : ""}</span><a href={mediaUrl(completeMovie.assetId)} download="my-movie.mp4">Download film ↗</a></div>}
+          {completeMovie && <div className="result-bar"><span><i />{completeMovie.mode === "image-motion" ? "Image-motion output · not generated video footage" : completeMovie.mode === "hybrid-video" ? `${job?.hero?.provider ?? "Generated"} animation · ${bookends ? "two zoomed bookends only" : "animation + stills"}` : "Storyboard-motion film"} · {completeMovie.durationSeconds.toFixed(1)}s{!completeMovie.hasAudio ? " · No audio" : ""}</span><a href={mediaUrl(completeMovie.assetId)} download="my-movie.mp4">Download film ↗</a></div>}
           {completeMovie && completeMovie.mode !== "hybrid-video" && <p className="incomplete-label">This saved result contains image motion, not a video-model animation. Storyboard approval is restored; genuine new animation requires a configured video-generation provider.</p>}
 
           {error && <div className="notice error" role="alert"><strong>Something needs your attention</strong><p>{error}</p>{jobId && !job && <button className="text-button" onClick={() => { setJobId(null); localStorage.removeItem("movie-magic:last-job"); }}>Stop watching this job</button>}</div>}
@@ -479,6 +483,7 @@ export default function MovieStudio() {
           {!!job?.warnings.length && <div className="notice"><strong>Production notes</strong>{job.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
 
           <div className="storyboard-heading"><h3>{movieFirst ? "Storyboard extracted from the movie" : "The storyboard"} <span>{String(storyboardFrames.length).padStart(2, "0")} / {String(shotIds.length).padStart(2, "0")}</span></h3><span className="small-muted">{movieFirst ? "ACTUAL MOVIE FRAMES" : "CONSISTENT REFERENCES. ONE STORY."}</span></div>
+          {bookends && <p className="field-help">These approved images are story references, not extra still shots in the movie. The final cut uses the animation's first and last frames as its only zoomed bookends, with real video throughout the middle.</p>}
           {job?.plan && !completeMovie && <p className="incomplete-label">{movieFirst ? "The movie is being made first. Its storyboard images will appear after encoding." : approvedCount < shotIds.length ? `Incomplete storyboard preview — ${approvedCount} of ${shotIds.length} shots approved. This is not a finished movie.` : "All storyboard shots are approved. Final movie assembly has not completed."}</p>}
           <div className={`storyboard-grid ${shotIds.length === 6 ? "six-shots" : ""}`}>{shotIds.map((shotId, index) => {
             const candidates = job?.frames.filter(item => item.shotId === shotId) ?? [];
@@ -487,7 +492,7 @@ export default function MovieStudio() {
             return <article className="storyboard-card" key={shotId}><div className="frame-image">{frame ?
               // eslint-disable-next-line @next/next/no-img-element
               <img src={mediaUrl(frame.assetId)} alt={shot?.action || `Storyboard shot ${index + 1}`} /> : <FrameIcon />}
-              <span className="frame-number">0{index + 1}</span></div><div className="frame-detail"><span>{(shotIds.length === 6 ? ["ORDINARY MOMENT", "THE SPARK", "CROSSING OVER", "THE IMPOSSIBLE", "MASTERY", "THE PAYOFF"] : ["THE BEGINNING", "THE CONNECTION", "THE JOURNEY", "THE ARRIVAL"])[index]}</span><small>{shot?.durationSeconds ?? timeline.durations[index]} SEC</small></div>
+              <span className="frame-number">0{index + 1}</span></div><div className="frame-detail"><span>{(shotIds.length === 6 ? ["ORDINARY MOMENT", "THE SPARK", "CROSSING OVER", "THE IMPOSSIBLE", "MASTERY", "THE PAYOFF"] : ["THE BEGINNING", "THE CONNECTION", "THE JOURNEY", "THE ARRIVAL"])[index]}</span><small>{bookends ? "REFERENCE" : `${shot?.durationSeconds ?? timeline.durations[index]} SEC`}</small></div>
               {shot && <p>{shot.purpose}</p>}{frame ? <span className={`review-badge ${isFrameApproved(frame) || frame.source === "extracted" ? "" : "review-warning"}`}>{frame.source === "extracted" ? `Movie frame · ${frame.extractedAtSeconds?.toFixed(2)}s` : frame.designerDecision?.action === "keep" ? "Kept by designer" : frame.designerDecision?.action === "regenerate" ? "Designer requested regeneration" : frame.continuity.verdict === "PASS" ? "Approved by AI" : "Needs revision"}</span> : job?.plan && <span className="review-badge review-warning">{movieFirst ? "Waiting for movie" : "Not generated"}</span>}
               {frame && frame.continuity.verdict !== "PASS" && frame.source !== "extracted" && <details className="frame-corrections"><summary>Review corrections</summary><ul>{frame.continuity.reasons.map((reason, at) => <li key={at}>{reason}</li>)}</ul></details>}
               {frame && job && !movieFirst && <DesignerFrameControls key={`${job.id}-${frame.assetId}`} frame={frame} candidates={candidates}

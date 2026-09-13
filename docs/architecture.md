@@ -163,6 +163,19 @@ Snapshot `revision` is the polling cursor; context has its own revision. A `rese
 
 The web studio defaults to reviewed storyboards and a required Google Veo clip. Astra handles reference analysis and direction; Flare handles stills; a separate Google key authorizes Veo animation. Explicit `video_provider` selection requires an actual clip before hybrid assembly, never a slideshow fallback. When the temporary OpenAI Sora adapter is explicitly selected instead, its hero is car-only because that API rejects human-face references. DaVinci API integration remains unverified and is not represented as working.
 
+The studio selects `render_layout: "video-bookends"` for a 15-second final cut. The approved four/six-shot plan remains reference material; only two extracted video frames become still segments. The middle is entirely generated footage, with native audio synchronized at 3–11 seconds. Sora bookend movies are therefore entirely car-only, including their extracted stills. API callers omitting the layout keep the legacy storyboard sequence.
+
+```mermaid
+flowchart LR
+    Approved["Approved generated clip"] --> Normalize["Normalize to 8 seconds / 24 fps"]
+    Normalize --> First["Exact first frame<br/>3-second centered zoom out"]
+    Normalize --> Video["8 seconds of genuine animation<br/>Native audio retained"]
+    Normalize --> Last["Exact last frame<br/>4-second centered zoom in"]
+    First --> Cut["15-second MP4<br/>Opening - video - closing"]
+    Video --> Cut
+    Last --> Cut
+```
+
 Movie-first remains an explicitly selected image-motion alternative, illustrated below. Existing API callers that omit `production_mode` retain reviewed-storyboard behavior. A failed image-only job can explicitly switch to movie-first; an OpenAI hybrid request cannot silently downgrade to it.
 
 ```mermaid
@@ -228,6 +241,8 @@ Original photo bytes remain primary identity references in likeness mode. Produc
 
 ### Timeline contract
 
+The following are reference-plan timelines and legacy storyboard-layout output timings. `getRenderTimeline` derives a separate **3, 8, 4-second** output for video bookends without rewriting the director plan; the hero remains `shot_03` or `shot_04` in the saved artifacts.
+
 | Format | Shot durations in seconds | Total | Optional hero |
 |---|---|---|---|
 | Classic | 3, 3, 8, 4 | 18 seconds | `shot_03` |
@@ -289,6 +304,8 @@ flowchart LR
 ```
 
 The worker reuses saved character analysis and the director plan. Every new approval is checkpointed before progressing, so a second failure still preserves prior work. A previously attempted optional hero video is not resubmitted merely because final assembly is being retried. Missing approved media blocks the retry rather than silently regenerating it. This recovery endpoint is separate from the media service's cancellation and tombstone protocol.
+
+Required Veo retries resume the recorded Google operation, skipping endpoint generation and new video submission. Download and continuity validation can run again against that existing output; validation failures retain their actionable provider error instead of being replaced by a generic missing-animation message.
 
 ### Designer authority and practical approval
 

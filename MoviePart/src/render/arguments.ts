@@ -46,11 +46,13 @@ function shotFrames(index: number, timeline: Timeline): number {
 
 export function buildStillArguments(
   inputPath: string, outputPath: string, shotIndex: number, timeline: Timeline = getTimeline(),
+  bookend?: "opening" | "closing",
 ): string[] {
   const frames = shotFrames(shotIndex, timeline);
   const progress = `on/${frames - 1}`;
-  const zoom = shotIndex % 2 === 0 ? `1+0.035*${progress}` : `1.035-0.035*${progress}`;
-  const pan = shotIndex % 2 === 0 ? `0.45+0.1*${progress}` : `0.55-0.1*${progress}`;
+  const zoom = bookend === "opening" ? `1.035-0.035*${progress}`
+    : bookend === "closing" || shotIndex % 2 === 0 ? `1+0.035*${progress}` : `1.035-0.035*${progress}`;
+  const pan = bookend ? "0.5" : shotIndex % 2 === 0 ? `0.45+0.1*${progress}` : `0.55-0.1*${progress}`;
   // Fit rather than stretch/crop the source. A small centered move preserves
   // the subject while the double-size working canvas reduces zoom jitter.
   const filter = [
@@ -69,6 +71,7 @@ export function buildStillArguments(
 
 export function buildHeroArguments(
   inputPath: string, outputPath: string, timeline: Timeline = getTimeline(),
+  padShortClip = true,
 ): string[] {
   const heroIndex = timeline.shotIds.indexOf(timeline.heroShotId);
   const frames = shotFrames(heroIndex, timeline);
@@ -78,12 +81,26 @@ export function buildHeroArguments(
     "scale=w='max(2,trunc(iw*sar/2)*2)':h=ih", "setsar=1",
     "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
     "pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black", "setsar=1", "fps=24",
-    `tpad=stop_mode=clone:stop_duration=${duration}`, `trim=end_frame=${frames}`,
+    ...(padShortClip ? [`tpad=stop_mode=clone:stop_duration=${duration}`] : []), `trim=end_frame=${frames}`,
     "setpts=PTS-STARTPTS", "format=yuv420p",
   ].join(",");
   return [
-    ...common, ...localInput, "-i", mediaCommandPath(inputPath), "-map", "0:v:0", "-vf", filter,
+    ...common, ...(!padShortClip ? ["-xerror"] : []), ...localInput,
+    ...(!padShortClip ? ["-err_detect", "explode"] : []),
+    "-i", mediaCommandPath(inputPath), "-map", "0:v:0", "-vf", filter,
     "-an", "-sn", "-dn", "-frames:v", String(frames), ...encoding, mediaCommandPath(outputPath),
+  ];
+}
+
+export function buildBookendExtractionArguments(
+  inputPath: string, outputPath: string, bookend: "opening" | "closing",
+): string[] {
+  return [
+    ...common, ...localInput, "-threads", "2", "-i", mediaCommandPath(inputPath),
+    "-map", "0:v:0", "-an", "-sn", "-dn",
+    "-vf", `select=eq(n\\,${bookend === "opening" ? 0 : 191})`,
+    "-frames:v", "1", "-fps_mode", "passthrough", "-c:v", "png", "-threads", "1",
+    "-f", "image2", "-update", "1", mediaCommandPath(outputPath),
   ];
 }
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MovieError, getTimeline, productionModeOf, type CharacterReference, type MovieJob, type RenderResult } from "./domain";
+import { MovieError, getTimeline, productionModeOf, type CharacterReference, type MovieJob, type RenderLayout, type RenderResult } from "./domain";
 import type {
   DirectorService, GenerationContext, MovieConfig, ReferenceService,
   RendererService, StoryboardService, VideoService,
@@ -19,6 +19,12 @@ export interface PipelineServices {
   video: VideoService;
   renderer: RendererService;
   extract?: typeof extractStoryboard;
+}
+
+function requireRenderLayout(result: RenderResult, layout?: RenderLayout): void {
+  if (layout === "video-bookends" && (result.renderLayout !== layout || result.mode !== "hybrid-video" || result.durationSeconds !== 15)) {
+    throw new MovieError("RENDER_INVALID_OUTPUT", "The requested video-bookend cut was not produced. An older storyboard-layout movie was not substituted.", 502);
+  }
 }
 
 export async function executeMovie(
@@ -90,7 +96,7 @@ export async function executeMovie(
       }, sceneContext);
       validateRenderInput({ plan, frames, hero: job.hero, productionMode: "movie-first" }, job.id);
       await context.report({ stage: "ASSEMBLING", message: "Making the movie before extracting its storyboard.", provider: "FFmpeg" });
-      movie = await renderer.render({ plan, frames, hero: job.hero, productionMode: "movie-first" }, context);
+      movie = await renderer.render({ plan, frames, hero: job.hero, productionMode: "movie-first", renderLayout: job.request.render_layout }, context);
       await checkpoint({ result: movie });
     }
     await context.report({ stage: "EXTRACTING_STORYBOARD", message: "Movie encoded. Extracting storyboard images from its actual frames.", provider: "FFmpeg" });
@@ -121,15 +127,23 @@ export async function executeMovie(
     }
     if (hero.provider !== "OpenAI Sora") throw new MovieError("ANIMATION_REQUIRED", "This movie requires a genuine OpenAI Sora clip.");
     await context.report({ stage: "ASSEMBLING", provider: "FFmpeg", message: "Mixing approved still shots with the generated OpenAI animation." });
-    const result = await renderer.render({ plan, frames, hero }, context);
+    const result = await renderer.render({ plan, frames, hero, renderLayout: job.request.render_layout }, context);
+    requireRenderLayout(result, job.request.render_layout);
     if (result.mode !== "hybrid-video") throw new MovieError("ANIMATION_REQUIRED", "The final output did not include the required generated animation.");
     return result;
   }
-  const heroPreviouslyAttempted = job.heroAttempted || job.operations.some(operation => operation.provider === "Google Veo");
-  if (job.request.enable_hero_video && !hero && !heroPreviouslyAttempted) {
-    await checkpoint({ heroAttempted: true });
-    await context.report({ stage: "GENERATING_HERO", message: "Preparing the optional hero-video enhancement." });
-    hero = await (services?.video ?? createVeoService(config)).generate({ plan, character, product: job.product, frames }, context);
+  const veoOperation = job.operations.filter(operation => operation.provider === "Google Veo").at(-1)?.id;
+  const heroPreviouslyAttempted = job.heroAttempted || !!veoOperation;
+  if (job.request.video_provider === "google-veo" && !hero && job.heroAttempted && !veoOperation) {
+    throw new MovieError("VEO_SUBMISSION_UNCERTAIN", "A previous Veo submission was marked as started, but no operation ID was saved. Inspect that submission before authorizing a replacement; retry will not submit another paid video blindly.", 409);
+  }
+  if (job.request.enable_hero_video && !hero && (!heroPreviouslyAttempted || (job.request.video_provider === "google-veo" && veoOperation))) {
+    await context.report({ stage: "GENERATING_HERO", message: veoOperation
+      ? "Resuming the saved Veo animation without another video submission."
+      : "Preparing the hero-video animation." });
+    hero = await (services?.video ?? createVeoService(config)).generate({
+      plan, character, product: job.product, frames, ...(veoOperation ? { operationId: veoOperation } : {}),
+    }, { ...context, beforeVideoSubmission: () => checkpoint({ heroAttempted: true }) });
     await checkpoint({ hero });
   } else if (job.request.enable_hero_video && !hero && heroPreviouslyAttempted) {
     await context.warn(job.request.video_provider === "google-veo"
@@ -140,7 +154,8 @@ export async function executeMovie(
     throw new MovieError("ANIMATION_REQUIRED", "The required Google Veo animation was not completed. No still-only movie was substituted. Check the saved provider warnings before another attempt.", 502);
   }
   await context.report({ stage: "ASSEMBLING", message: `Assembling the ${timeline.shotIds.length}-shot advertisement.`, provider: "FFmpeg" });
-  const result = await renderer.render({ plan, frames, hero }, context);
+  const result = await renderer.render({ plan, frames, hero, renderLayout: job.request.render_layout }, context);
+  requireRenderLayout(result, job.request.render_layout);
   if (job.request.video_provider === "google-veo" && result.mode !== "hybrid-video") {
     throw new MovieError("ANIMATION_REQUIRED", "The final output did not include the required Veo animation.");
   }

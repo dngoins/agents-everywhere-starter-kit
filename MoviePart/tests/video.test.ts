@@ -4,7 +4,7 @@ import test from "node:test";
 import sharp from "sharp";
 import { GenerateVideosOperation, type GenerateVideosParameters } from "@google/genai";
 import type { AssetRecord, CharacterReference, MoviePlan, ProductReference, StoryboardFrame } from "../src/domain";
-import { getTimeline } from "../src/domain";
+import { getTimeline, MovieError } from "../src/domain";
 import { GENERIC_WARDROBE } from "../src/references";
 import type { GenerationContext, MovieConfig } from "../src/domain/services";
 import { createVeoService, type VeoDependencies, type VeoTransport } from "../src/providers/google";
@@ -172,6 +172,46 @@ test("Veo bounded polling stops without resubmitting its paid operation", async 
   assert.match(f.warnings[0], /polling window/);
 });
 
+test("Veo resumes a saved operation without generating images or submitting another video", async () => {
+  const f = await fixture();
+  const operationId = "models/veo-3.1-generate-preview/operations/existing";
+  f.input.plan.videoProvider = "google-veo";
+  f.dependencies.endFrame = async () => assert.fail("Do not regenerate the approved endpoint");
+  f.transport.generate = async () => assert.fail("Do not submit another paid video");
+  const poll = f.transport.poll;
+  f.transport.poll = async input => {
+    assert.equal(input.operation.name, operationId);
+    return poll(input);
+  };
+  const result = await createVeoService(config, f.dependencies).generate({ ...f.input, operationId }, f.context);
+  assert.equal(result?.provider, "Google Veo");
+  assert.equal(result?.model, "veo-3.1-generate-preview");
+  assert.deepEqual(f.sequence, ["poll", "download", "review"]);
+});
+
+test("required Veo preserves a safe review failure instead of reporting that animation was not generated", async () => {
+  const f = await fixture();
+  f.input.plan.videoProvider = "google-veo";
+  f.dependencies.review = async () => { throw new MovieError("OPENAI_CREDITS_EXHAUSTED", "Review needs OpenAI credits.", 502); };
+  await assert.rejects(createVeoService(config, f.dependencies).generate(f.input, f.context),
+    (error: unknown) => error instanceof MovieError && error.code === "OPENAI_CREDITS_EXHAUSTED");
+  assert.deepEqual(f.warnings, ["Review needs OpenAI credits."]);
+  assert.ok(f.records.some(asset => asset.kind === "video"), "Keep the generated clip when review fails");
+});
+
+test("Veo uses the configured practical review threshold and rejects invalid resume identifiers without calls", async () => {
+  const f = await fixture();
+  f.input.plan.videoProvider = "google-veo";
+  f.dependencies.review = async () => ({ ...pass, confidence: 0.6 });
+  assert.ok(await createVeoService({ ...config, continuityPolicy: "practical" }, f.dependencies).generate(f.input, f.context));
+  await assert.rejects(createVeoService({ ...config, continuityPolicy: "strict" }, f.dependencies).generate(f.input, f.context),
+    (error: unknown) => error instanceof MovieError && error.code === "VEO_CONTINUITY_REJECTED");
+  const calls = f.sequence.length;
+  await assert.rejects(createVeoService(config, f.dependencies).generate({ ...f.input, operationId: "https://unexpected.example/video" }, f.context),
+    (error: unknown) => error instanceof MovieError && error.code === "INVALID_VEO_OPERATION");
+  assert.equal(f.sequence.length, calls);
+});
+
 test("Veo rejection, missing operation IDs, network errors and review rejection all warn and fall back", async () => {
   for (const variant of ["rejected", "missing-id", "network", "review"] as const) {
     const f = await fixture();
@@ -191,6 +231,48 @@ test("a rejected hero end frame never reaches Veo generation", async () => {
   f.dependencies.endFrame = async () => ({ ...f.input.frames[0], shotId: "shot_03_end", continuity: { verdict: "REJECT", reasons: ["Drift"], confidence: 0.9 } });
   assert.equal(await createVeoService(config, f.dependencies).generate(f.input, f.context), null);
   assert.equal(f.sequence.length, 0);
+});
+
+test("Veo marks submission only after endpoint preparation and before the video request", async () => {
+  const f = await fixture();
+  const endFrame = f.dependencies.endFrame!;
+  f.dependencies.endFrame = async (...args) => {
+    assert.ok(!f.sequence.includes("submission-started"));
+    return endFrame(...args);
+  };
+  f.context.beforeVideoSubmission = async () => { f.sequence.push("submission-started"); };
+  const generate = f.transport.generate;
+  f.transport.generate = async input => {
+    assert.equal(f.sequence.at(-1), "submission-started");
+    return generate(input);
+  };
+  assert.ok(await createVeoService(config, f.dependencies).generate(f.input, f.context));
+  assert.equal(f.sequence.filter(value => value === "submission-started").length, 1);
+
+  const failed = await fixture();
+  failed.dependencies.endFrame = async () => { throw new MovieError("CONTINUITY_REJECTED", "Endpoint is not approved."); };
+  failed.context.beforeVideoSubmission = async () => assert.fail("Preparation must not mark a paid video attempt");
+  failed.transport.generate = async () => assert.fail("No video request before endpoint approval");
+  assert.equal(await createVeoService(config, failed.dependencies).generate(failed.input, failed.context), null);
+});
+
+test("Veo reuses an approved saved endpoint and never submits when its durable guard fails", async () => {
+  const f = await fixture();
+  f.input.plan.videoProvider = "google-veo";
+  const bytes = await sharp({ create: { width: 1280, height: 720, channels: 3, background: "#884433" } }).png().toBuffer();
+  const saved = await f.context.media.saveAsset({
+    ownerId: f.context.ownerId, jobId: f.context.jobId, kind: "storyboard", mime: "image/png",
+    bytes, width: 1280, height: 720,
+  });
+  f.context.getFrames = async () => [{ ...f.input.frames[0], shotId: "shot_03_end", assetId: saved.id }];
+  f.dependencies.endFrame = async () => assert.fail("Do not regenerate an approved end frame");
+  f.context.beforeVideoSubmission = async () => { throw new MovieError("STORE_BUSY", "The store is busy.", 503); };
+  await assert.rejects(createVeoService(config, f.dependencies).generate(f.input, f.context),
+    (error: unknown) => error instanceof MovieError && error.code === "STORE_BUSY");
+  assert.equal(f.sequence.length, 0, "No provider submission when checkpointing fails");
+  f.context.beforeVideoSubmission = async () => {};
+  assert.ok(await createVeoService(config, f.dependencies).generate(f.input, f.context));
+  assert.equal(f.sequence.filter(value => value === "generate").length, 1);
 });
 
 test("invalid hero timing or a missing approved still prevents submissions", async () => {
