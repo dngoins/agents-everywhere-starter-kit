@@ -396,6 +396,7 @@ export class Orchestrator {
 
   private remove(session: Session, status: 'cancelled' | 'expired'): void {
     this.cancel(session, status);
+    this.showroom?.forget(session.id);
     clearTimeout(session.timer);
     this.sessions.delete(session.id);
     this.expired.set(session.id, true);
