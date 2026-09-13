@@ -1,1 +1,1 @@
-export { PadBot, PadBot as default, COMMANDS, normalizeUuid } from '@magicpitch/showroom-runtime/browser';
+export { PadBot, PadBot as default, COMMANDS, normalizeUuid } from '../../packages/showroom-runtime/browser/padbot.js';
