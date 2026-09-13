@@ -3,6 +3,7 @@ import type { ServerConfig } from './config.js';
 import { HttpError } from './errors.js';
 import { backendWorkflowPrompt, expertInstructions, voiceInstructions } from './prompts.js';
 import { modelTools } from './tools.js';
+import { createLiveSessionRequest } from '@magicpitch/showroom-runtime/server';
 
 export const sdpSchema = z.string().min(1).max(128 * 1024)
   .refine((value) => Buffer.byteLength(value, 'utf8') <= 128 * 1024 && /^v=0(?:\r?\n|$)/.test(value),
@@ -70,24 +71,14 @@ export class OpenAIProvider {
 
   async createLive(sdp: string, signal: AbortSignal): Promise<LiveAnswer> {
     const offer = sdpSchema.parse(sdp);
-    const raw = await this.post('live/sessions', {
-      session: {
-        model: this.config.models.voice,
-        instructions: voiceInstructions,
-        store: false,
-        delegation: {
-          type: 'responses',
-          responses: {
-            model: this.config.models.regular,
-            instructions: backendWorkflowPrompt,
-            tools: modelTools,
-            tool_choice: 'auto',
-            parallel_tool_calls: false,
-          },
-        },
-      },
-      transport: { type: 'webrtc', sdp: offer },
-    }, 'Live session creation', signal);
+    const raw = await this.post('live/sessions', createLiveSessionRequest({
+      sdp: offer,
+      voiceModel: this.config.models.voice,
+      reasoningModel: this.config.models.regular,
+      instructions: voiceInstructions,
+      delegationInstructions: backendWorkflowPrompt,
+      tools: modelTools,
+    }), 'Live session creation', signal);
     const parsed = liveAnswerSchema.safeParse(raw);
     if (!parsed.success || JSON.stringify(parsed.data).includes(this.config.apiKey)) {
       throw new HttpError(502, 'Live session creation returned an invalid response.');

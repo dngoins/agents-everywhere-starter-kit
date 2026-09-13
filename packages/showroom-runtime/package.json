@@ -1,0 +1,14 @@
+{
+  "name": "@magicpitch/showroom-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.6" },
+  "exports": {
+    "./browser": { "types": "./browser/index.d.ts", "default": "./browser/index.js" },
+    "./server": { "types": "./server/index.d.ts", "default": "./server/index.js" },
+    "./assets": { "types": "./server/assets.d.ts", "default": "./server/assets.js" }
+  },
+  "scripts": { "test": "node --test tests/*.test.js" },
+  "files": ["browser", "server", "README.md"]
+}
