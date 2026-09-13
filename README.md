@@ -33,7 +33,7 @@ flowchart LR
     Studio["MoviePart /<br/>Independent creator studio"]
     Worker["Studio worker<br/>References, director and storyboard"]
     Voice["OpenAI Live<br/>Configured voice session"]
-    Models["Configured OpenAI<br/>Optional Veo for studio hero shots"]
+    Models["OpenAI references, planning and stills<br/>Google Veo: default studio animation"]
     Encoder["FFmpeg and ffprobe<br/>MP4 assembly and validation"]
     Followup["Future CRM and calendar integration"]
 
@@ -104,12 +104,15 @@ In a second terminal, from the repository root:
 ```powershell
 Set-Location MoviePart
 npm ci
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 npm run dev
 ```
 
 Open `/kiosk` to pair with the orchestrator or join the robot's existing session through an agreed trusted bridge. Creating another session in the kiosk does not attach the robot to it. Refreshing the kiosk forgets its in-memory capability.
 
-For the independent creator studio, also run `npm run worker` in another terminal in `MoviePart`. Configure a private `.env`, provide the selected car's authorized references, and confirm generation consent before creating a movie. The Create action lists missing requirements; it never silently turns unavailable live generation into mock success.
+For the independent creator studio, also run `npm run worker` in another terminal in `MoviePart`. Edit the private `.env` using [MoviePart's current example](MoviePart/.env.example): the default workflow requires `OPENAI_API_KEY` and `GEMINI_API_KEY`, with explicit model choices shown there. Provide the selected car's authorized references and confirm generation consent before creating a movie. The Create action lists missing requirements; it never silently turns unavailable live generation into mock success.
+
+After editing `.env`, wait for active jobs to finish before restarting the web app and worker. Refreshing the browser alone does not reload credentials. For production, use `npm run build` followed by `npm run start` instead of `npm run dev`; the worker remains a separate process.
 
 For real orchestrator media rendering, separately run `npm run media-service` in MoviePart and configure Dwight's HTTP media adapter with the matching private service token. See [the media handoff](MoviePart/README.md#dwight-integration) before sending any participant data. Mock orchestrator mode does not need this service.
 
@@ -131,6 +134,10 @@ Movie Magic builds a controlled film from stable references rather than asking o
 | Required OpenAI animation | An eight-second Sora car-only clip after storyboard approval; failure blocks the hybrid movie instead of substituting still-image zooms |
 
 The studio's output is a validated 16:9, 720p, 24 fps MP4. `image-motion` identifies movie-first animated-image output; `storyboard-motion` and `hybrid-video` describe reviewed stills or a hybrid with an existing/generated hero clip. These are **not** the orchestrator's result-provenance labels, and animated stills are not fully AI-generated moving footage.
+
+The default bookend cut is identified by `renderLayout: "video-bookends"`. Native clip audio plays during the middle segment (3–11 seconds); a licensed music bed is optional, not required for generated audio. Approved storyboard references and the director plan remain available even though intermediate still images are not inserted into this cut.
+
+Explicit retry preserves approved work. Interrupted end-frame preparation can resume before the first video submission; an already submitted Veo operation is resumed by ID. If a paid submission may have started but its ID is missing, the app blocks blind resubmission rather than repeatedly accepting retries that cannot progress.
 
 Dwight's current `demo-car-v1` brief instead describes an unbranded synthetic concept, with its own scenes, on-screen copy, CTA, and duration. The media service respects that brief; it does not convert it into a Tesla or Toyota advertisement.
 
