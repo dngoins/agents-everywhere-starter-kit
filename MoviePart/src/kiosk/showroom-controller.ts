@@ -39,11 +39,13 @@ export class ShowroomController {
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
   private expiryTimer: ReturnType<typeof setTimeout> | undefined;
   private queue: Promise<unknown> = Promise.resolve();
-  private confirmations = new Map<string, Promise<ShowroomSnapshot>>();
+  private confirmations = new Map<string, { eventId: string; request: Promise<ShowroomSnapshot>; failed: boolean; channel: "voice" | "touch" }>();
   private playback: PlaybackEvent | null = null;
   private playbackStarted = false;
   private playbackEnded = false;
   private playbackStartRequest: Promise<ShowroomSnapshot> | null = null;
+  private playbackStartReceipt: { eventId: string; expectedRevision: number } | null = null;
+  private playbackEndReceipt: { eventId: string; expectedRevision: number } | null = null;
   private readonly api: ShowroomApi;
   private readonly now: () => number;
   private readonly uuid: () => string;
@@ -104,6 +106,7 @@ export class ShowroomController {
   private clearMovie() {
     if (this.state.movieUrl) this.urls.revokeObjectURL(this.state.movieUrl);
     this.playback = null; this.playbackStarted = false; this.playbackEnded = false; this.playbackStartRequest = null;
+    this.playbackStartReceipt = null; this.playbackEndReceipt = null;
     this.set({ movieUrl: null, movieLoading: false, playbackError: null });
   }
   private clearLocal() {
@@ -221,8 +224,8 @@ export class ShowroomController {
     this.queue = work.catch(() => undefined);
     return work;
   }
-  private async mutate(input: ActionInput, expectedRevision = this.state.snapshot?.revision): Promise<ShowroomSnapshot> {
-    const action = ShowroomActionSchema.parse({ ...input, schemaVersion: 1, eventId: this.uuid(), expectedRevision });
+  private async mutate(input: ActionInput, expectedRevision = this.state.snapshot?.revision, eventId = this.uuid()): Promise<ShowroomSnapshot> {
+    const action = ShowroomActionSchema.parse({ ...input, schemaVersion: 1, eventId, expectedRevision });
     return this.serial(async root => {
       const snapshot = await this.api.action(action, root.signal);
       if (!this.valid(root)) throw new Error("This session ended before the action completed.");
@@ -315,11 +318,11 @@ export class ShowroomController {
   confirm(pending: PendingAction, decision: "approve" | "reject", channel: "voice" | "touch") {
     const key = `${pending.pendingActionId}:${pending.confirmationFingerprint}:${decision}`;
     const existing = this.confirmations.get(key);
-    if (existing) return existing;
+    if (existing && !existing.failed) return existing.request;
     const snapshot = this.state.snapshot;
     if (!snapshot?.pendingAction) return Promise.reject(new Error("There is no current readback to approve."));
     const confirmation = {
-      pendingActionId: pending.pendingActionId, confirmationFingerprint: pending.confirmationFingerprint, decision, channel,
+      pendingActionId: pending.pendingActionId, confirmationFingerprint: pending.confirmationFingerprint, decision, channel: existing?.channel ?? channel,
     };
     try {
       assertPendingConfirmation(snapshot.pendingAction, confirmation, pending.expectedRevision, snapshot.revision, snapshot.inputRevision, this.now());
@@ -328,12 +331,17 @@ export class ShowroomController {
         if (this.capture.getState().references.length) this.capture.freeze();
       }
     } catch (error) { return Promise.reject(error); }
-    const request = this.mutate({ type: "action_confirmed", payload: confirmation }, pending.expectedRevision).then(async result => {
+    const eventId = existing?.eventId ?? this.uuid();
+    const receipt = { eventId, request: Promise.resolve(snapshot), failed: false, channel: confirmation.channel };
+    const request = this.mutate({ type: "action_confirmed", payload: confirmation }, pending.expectedRevision, eventId).catch(error => {
+      receipt.failed = true;
+      throw error;
+    }).then(async result => {
       if (decision === "approve" && pending.kind === "motion" && result.motionGrant) return this.executeFraming();
       return result;
     });
-    this.confirmations.set(key, request);
-    // Keep uncertain results fenced; a refreshed/new readback has a different key.
+    receipt.request = request;
+    this.confirmations.set(key, receipt);
     return request;
   }
   requestFraming() {
@@ -405,7 +413,9 @@ export class ShowroomController {
   onPlaying() {
     if (!this.playback || this.playbackStarted || !this.state.movieUrl) return;
     this.playbackStarted = true;
-    this.playbackStartRequest = this.mutate({ type: "playback_started", payload: this.playback });
+    this.playbackStartReceipt = { eventId: this.uuid(), expectedRevision: this.state.snapshot!.revision };
+    this.playbackStartRequest = this.mutate({ type: "playback_started", payload: this.playback },
+      this.playbackStartReceipt.expectedRevision, this.playbackStartReceipt.eventId);
     void this.playbackStartRequest.catch(() => {
       this.set({ playbackError: "Playback started, but the showroom has not acknowledged it. Retry acknowledgement." });
     });
@@ -415,7 +425,8 @@ export class ShowroomController {
     this.playbackEnded = true;
     try {
       await this.playbackStartRequest;
-      await this.mutate({ type: "playback_ended", payload: this.playback });
+      this.playbackEndReceipt = { eventId: this.uuid(), expectedRevision: this.state.snapshot!.revision };
+      await this.mutate({ type: "playback_ended", payload: this.playback }, this.playbackEndReceipt.expectedRevision, this.playbackEndReceipt.eventId);
       this.clearMovie();
       this.onPlaybackPause(false);
     } catch {
@@ -423,11 +434,14 @@ export class ShowroomController {
     }
   }
   async retryPlaybackAcknowledgement() {
-    if (!this.playback || !this.playbackStarted) throw new Error("Start playback before acknowledging it.");
-    this.playbackStartRequest = this.mutate({ type: "playback_started", payload: this.playback });
+    if (!this.playback || !this.playbackStarted || !this.playbackStartReceipt) throw new Error("Start playback before acknowledging it.");
+    this.playbackStartRequest = this.mutate({ type: "playback_started", payload: this.playback },
+      this.playbackStartReceipt.expectedRevision, this.playbackStartReceipt.eventId);
     await this.playbackStartRequest;
     if (this.playbackEnded) {
-      await this.mutate({ type: "playback_ended", payload: this.playback });
+      this.playbackEndReceipt ??= { eventId: this.uuid(), expectedRevision: this.state.snapshot!.revision };
+      await this.mutate({ type: "playback_ended", payload: this.playback },
+        this.playbackEndReceipt.expectedRevision, this.playbackEndReceipt.eventId);
       this.clearMovie();
       this.onPlaybackPause(false);
     } else this.set({ playbackError: null });
