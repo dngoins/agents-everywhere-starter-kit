@@ -106,7 +106,9 @@ export const StudioStatusSchema = z.discriminatedUnion('status', [
     status: z.literal('ready'), snapshotId: z.uuid(), jobId: z.uuid(),
     assetId: z.uuid(), mimeType: z.literal('video/mp4'),
     durationSeconds: z.number().positive().max(300),
-    provenance: z.literal('generated'),
+    byteLength: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    checksum: ConfirmationFingerprintSchema,
+    provenance: z.enum(['generated', 'mock_fixture']),
   }),
   z.strictObject({
     status: z.enum(['failed', 'cancelled']), snapshotId: z.uuid(), jobId: z.uuid(),

@@ -29,6 +29,21 @@ export const BridgeCredentialSchema = z.strictObject({
   role: z.literal('bridge'),
   expiresAt: ShowroomTimestampSchema,
 });
+export const OperatorPairingSchema = z.strictObject({
+  bridgeId: z.uuid(),
+  operatorCode: z.string().regex(/^[A-Z0-9]{8}$/),
+  expiresAt: ShowroomTimestampSchema,
+});
+export const OperatorPairInputSchema = z.strictObject({
+  operatorCode: OperatorPairingSchema.shape.operatorCode,
+});
+export const OperatorCredentialSchema = z.strictObject({
+  bridgeId: z.uuid(),
+  operatorToken: z.string().min(24).max(256),
+  role: z.literal('operator'),
+  purpose: z.literal('bridge:lease'),
+  expiresAt: ShowroomTimestampSchema,
+});
 export const BridgeLeaseInputSchema = z.strictObject({
   eventId: z.uuid(),
   sessionId: z.uuid(),
@@ -62,6 +77,20 @@ export const MotionIntentSchema = z.strictObject({
   pulseMs: z.number().int().positive().max(BRIDGE_LIMITS.maxPulseMs),
   leaseId: z.uuid(),
   leaseGeneration: ShowroomRevisionSchema.refine((value) => value > 0),
+  tracking: FramingTrackingSchema,
+});
+export const MotionApprovalSchema = MotionIntentSchema.omit({ tracking: true }).readonly();
+export const MotionGrantSchema = z.strictObject({
+  grantId: z.uuid(),
+  sessionId: z.uuid(),
+  inputRevision: ShowroomRevisionSchema,
+  expiresAt: ShowroomTimestampSchema,
+  intent: MotionApprovalSchema,
+  maxPulseCount: z.literal(4),
+  maxCumulativePulseMs: z.literal(2000),
+}).readonly();
+export const MotionExecutionRequestSchema = z.strictObject({
+  grantId: z.uuid(),
   tracking: FramingTrackingSchema,
 });
 export const StopIntentSchema = z.strictObject({
@@ -117,6 +146,8 @@ export const BridgeStatusSchema = z.strictObject({
   armed: z.boolean(),
   stopped: z.boolean(),
   leaseGeneration: ShowroomRevisionSchema,
+  leaseId: z.uuid().nullable(),
+  leaseExpiresAt: ShowroomTimestampSchema.nullable(),
   lastHeartbeatAt: ShowroomTimestampSchema.nullable(),
 });
 export const BridgeClientMessageSchema = z.discriminatedUnion('type', [
@@ -125,7 +156,11 @@ export const BridgeClientMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('acknowledgement'), acknowledgement: BridgeAcknowledgementSchema }),
 ]);
 export const BridgeServerMessageSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('state'), lease: BridgeLeaseSchema.nullable(), serverTime: ShowroomTimestampSchema }),
+  z.strictObject({
+    type: z.literal('state'), bridgeId: z.uuid(),
+    generation: ShowroomRevisionSchema, lastSequence: ShowroomRevisionSchema,
+    lease: BridgeLeaseSchema.nullable(), serverTime: ShowroomTimestampSchema,
+  }),
   z.strictObject({ type: z.literal('command'), command: BridgeCommandSchema }),
   z.strictObject({ type: z.literal('heartbeat'), serverTime: ShowroomTimestampSchema }),
 ]);
@@ -134,9 +169,15 @@ export type BridgeRegistrationInput = z.infer<typeof BridgeRegistrationInputSche
 export type BridgePairing = z.infer<typeof BridgePairingSchema>;
 export type BridgePairInput = z.infer<typeof BridgePairInputSchema>;
 export type BridgeCredential = z.infer<typeof BridgeCredentialSchema>;
+export type OperatorPairing = z.infer<typeof OperatorPairingSchema>;
+export type OperatorPairInput = z.infer<typeof OperatorPairInputSchema>;
+export type OperatorCredential = z.infer<typeof OperatorCredentialSchema>;
 export type BridgeLeaseInput = z.infer<typeof BridgeLeaseInputSchema>;
 export type BridgeLease = z.infer<typeof BridgeLeaseSchema>;
 export type MotionIntent = z.infer<typeof MotionIntentSchema>;
+export type MotionApproval = z.infer<typeof MotionApprovalSchema>;
+export type MotionGrant = z.infer<typeof MotionGrantSchema>;
+export type MotionExecutionRequest = z.infer<typeof MotionExecutionRequestSchema>;
 export type FramingTracking = z.infer<typeof FramingTrackingSchema>;
 export type StopIntent = z.infer<typeof StopIntentSchema>;
 export type BridgeCommand = z.infer<typeof BridgeCommandSchema>;
