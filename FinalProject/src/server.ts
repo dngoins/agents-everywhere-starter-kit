@@ -7,14 +7,13 @@ import { readConfig } from "./config.js";
 import { createApp } from "./http/app.js";
 import { Orchestrator } from "./orchestrator/service.js";
 import { createProviders } from "./providers/factory.js";
+import { DEMO_MEDIA } from "./providers/demo-media.js";
 
 async function main() {
   const config = readConfig();
   const root = process.cwd();
-  const fixture = new Uint8Array(await readFile(resolve(root, "fixtures", "media", "mock-preview.mp4")));
-  if (fixture.length < 32 || Buffer.from(fixture.subarray(4, 8)).toString("ascii") !== "ftyp") {
-    throw new Error("The synthetic mock-preview.mp4 fixture is missing or invalid.");
-  }
+  const fixture = new Uint8Array(await readFile(resolve(root, "fixtures", "media", DEMO_MEDIA.filename)));
+  const providers = createProviders(config, fixture);
   let deviceToken = config.DEMO_DEVICE_TOKEN;
   if (!deviceToken) {
     deviceToken = randomBytes(32).toString("base64url");
@@ -24,7 +23,6 @@ async function main() {
     await writeFile(path, `${deviceToken}\n`, { mode: 0o600 });
     console.log(JSON.stringify({ event: "pairing_file", path }));
   }
-  const providers = createProviders(config, fixture);
   const orchestrator = new Orchestrator({
     ...providers,
     sessionTtlMs: config.SESSION_TTL_MS,

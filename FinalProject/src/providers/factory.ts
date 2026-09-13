@@ -5,16 +5,25 @@ import { createOpenAIBriefProvider } from "./openai.js";
 import { createExaProfileProvider } from "./exa.js";
 import { createHttpMediaProvider } from "./media.js";
 import { ProviderFailure } from "./http-client.js";
+import { DEMO_MEDIA, createPrerecordedDemoProvider } from "./demo-media.js";
 
-export function createProviders(config: Config, fixture: Uint8Array) {
-  const mockMedia: MediaProvider = {
-    name: "mock",
-    async generate(_input, signal, progress) {
-      signal.throwIfAborted();
-      progress("rendering");
-      return { bytes: fixture, mimeType: "video/mp4", provenance: "mock_fixture", durationSeconds: 1 };
-    },
-  };
+type FixtureMetadata = Readonly<{
+  provenance: "mock_fixture" | "prerendered_fallback";
+  durationSeconds: number;
+}>;
+
+export function createProviders(config: Config, fixture: Uint8Array, metadata: FixtureMetadata = DEMO_MEDIA) {
+  const { provenance, durationSeconds } = metadata;
+  const mockMedia: MediaProvider = metadata === DEMO_MEDIA
+    ? createPrerecordedDemoProvider(fixture, config.MAX_MEDIA_BYTES)
+    : {
+      name: "mock",
+      async generate(_input, signal, progress) {
+        signal.throwIfAborted();
+        progress("rendering");
+        return { bytes: fixture, mimeType: "video/mp4", provenance, durationSeconds };
+      },
+    };
   const mockBrief = createMockBriefProvider();
   let briefProvider: BriefProvider = mockBrief;
   if (config.BRIEF_PROVIDER === "openai") {
@@ -51,5 +60,7 @@ export function createProviders(config: Config, fixture: Uint8Array) {
     if (!config.MEDIA_SERVICE_URL || !config.MEDIA_SERVICE_TOKEN) throw new Error("Missing media service configuration.");
     mediaProvider = createHttpMediaProvider(config.MEDIA_SERVICE_URL, config.MEDIA_SERVICE_TOKEN, config.MAX_MEDIA_BYTES);
   }
-  return { briefProvider, profileProvider, mediaProvider, fallbackMediaProvider: mockMedia };
+  return {
+    briefProvider, profileProvider, mediaProvider, fallbackMediaProvider: mockMedia,
+  };
 }

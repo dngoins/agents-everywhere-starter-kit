@@ -77,6 +77,34 @@ The robot backend creates the voice session using its server-side provider crede
 
 The customer kiosk is an operating surface: visible consent, confirmed customer/preferences, brief review, specific progress, playback, and an always-understandable end-session action. Its pairing controls are for the operator, not an invitation to expose backend credentials.
 
+The robot's conversation and the movie's production are concurrent. Start the background job when the minimum consented inputs are ready, not after the entire sales conversation ends. Keep the accepted input snapshot stable while the conversation continues.
+
+```mermaid
+sequenceDiagram
+    actor Customer
+    participant Robot
+    participant Orchestrator
+    participant Movie as Magic Video engine
+    Customer->>Robot: Consent, reference image and initial preferences
+    Robot->>Orchestrator: Confirm product and submit one brief/job
+    Orchestrator->>Movie: Start background production
+    par Foreground showroom conversation
+        Robot->>Customer: Discuss interests and approved product benefits
+        Customer->>Robot: Ask questions and share more context
+        Note over Robot,Orchestrator: Do not restart the accepted movie for every new detail
+    and Background movie production
+        Movie->>Movie: Generate scenes concurrently and review practical continuity
+        Note over Movie: Designer can keep an image and skip further creative retries
+        Movie-->>Orchestrator: Actual media ready with truthful provenance
+    end
+    Orchestrator-->>Robot: Movie is ready
+    Robot->>Customer: Would you like to see your film?
+    Customer->>Robot: Approve playback
+    Robot->>Customer: Play movie, then offer a test-drive follow-up
+```
+
+Approximately two minutes is an advisory experience target. The studio's elapsed-time display never cancels work or selects fallback media at that threshold. Operational safety limits are separate: the orchestrator defaults to a 30-minute session and a 15-minute job timeout, while the dedicated MoviePart service defaults to a configurable 10-minute job timeout. Existing `.env` overrides and already-running processes retain their configured limits until deliberately changed/restarted.
+
 ```mermaid
 sequenceDiagram
     actor Customer
@@ -113,7 +141,7 @@ sequenceDiagram
         M-->>O: cancelled, assetsDeleted true after cleanup
         Note over O: Store authorized result; expose ready only after successful cleanup
     else Default mock media mode
-        Note over O: Use explicitly synthetic local fixture; do not contact the media service
+        Note over O: Use the registered prerecorded demo; do not contact the media service
     end
 
     UI->>O: GET snapshot afterRevision or GET session job
@@ -131,7 +159,26 @@ The kiosk uses `Authorization` for downloads because an HTML video element canno
 
 Snapshot `revision` is the polling cursor; context has its own revision. A `resetRequired` snapshot replaces outdated state. A changed `serverInstanceId`, expired session, or revoked capability invalidates the local session rather than silently pairing a new customer.
 
-## 4. Creator-studio filmmaking pipeline
+## 4. Creator-studio filmmaking pipelines
+
+The web studio defaults to reviewed storyboards and a required Google Veo clip. Astra handles reference analysis and direction; Flare handles stills; a separate Google key authorizes Veo animation. Explicit `video_provider` selection requires an actual clip before hybrid assembly, never a slideshow fallback. When the temporary OpenAI Sora adapter is explicitly selected instead, its hero is car-only because that API rejects human-face references. DaVinci API integration remains unverified and is not represented as working.
+
+Movie-first remains an explicitly selected image-motion alternative, illustrated below. Existing API callers that omit `production_mode` retain reviewed-storyboard behavior. A failed image-only job can explicitly switch to movie-first; an OpenAI hybrid request cannot silently downgrade to it.
+
+```mermaid
+flowchart LR
+    Plan["Reuse or create the movie plan"]
+    Visuals["Reuse saved visuals<br/>Generate missing scenes once"]
+    MP4["Encode and validate MP4"]
+    Save["Persist playable movie"]
+    Extract["Extract one actual frame per scene"]
+    Show["Show movie and extracted storyboard"]
+    Plan --> Visuals --> MP4 --> Save --> Extract --> Show
+```
+
+Movie-first skips the continuity critic; it does not mark unreviewed images as approved. Intermediate visuals are saved privately as scene inputs. Only after encoding does the displayed storyboard populate with `source: extracted`, a timestamp, and `NOT_REVIEWED` metadata. An extraction-only failure preserves the MP4 and can resume without more model calls. In the current image-provider setup, the film is accurately labeled animated-image output, not fully generated moving footage.
+
+The following diagram describes the optional **reviewed-storyboard** path:
 
 ```mermaid
 flowchart TD
@@ -214,9 +261,44 @@ stateDiagram-v2
     ASSEMBLING --> FAILED
     COMPLETED --> [*]
     FAILED --> [*]
+    FAILED --> RECEIVED: Explicit owner-authorized retry with saved plan
 ```
 
 This diagram uses **studio** status names. The media-service wire protocol uses `queued`, `running`, `ready`, and `failed`, with finer progress stages; it must not return a studio status to Dwight.
+
+### Explicit studio recovery
+
+`POST /api/movie-jobs/{jobId}/retry` atomically requeues an eligible failed job with its original ID and a durable retry receipt. The request contains an idempotency key and the expected retry counter. Duplicate delivery returns the existing receipt; a stale counter cannot trigger another paid attempt.
+
+```mermaid
+flowchart LR
+    Failed["Failed movie<br/>Plan and frame history retained"]
+    Action["Explicit retry decision<br/>Same job and immutable inputs"]
+    Preflight["Validate ownership, consent,<br/>saved files and worker readiness"]
+    Saved["Reuse approved shots<br/>No new provider calls"]
+    Retry["Retry failed shot<br/>Latest review corrections"]
+    Remaining["Generate missing shots<br/>Bounded review per shot"]
+    Gate{"Every planned shot approved?"}
+    Assemble["Assemble and validate final MP4"]
+    Incomplete["Keep incomplete storyboard<br/>Await another explicit decision"]
+
+    Failed --> Action --> Preflight
+    Preflight --> Saved --> Retry --> Remaining --> Gate
+    Gate -->|"Yes"| Assemble
+    Gate -->|"No"| Incomplete
+```
+
+The worker reuses saved character analysis and the director plan. Every new approval is checkpointed before progressing, so a second failure still preserves prior work. A previously attempted optional hero video is not resubmitted merely because final assembly is being retried. Missing approved media blocks the retry rather than silently regenerating it. This recovery endpoint is separate from the media service's cancellation and tombstone protocol.
+
+### Designer authority and practical approval
+
+Runtime storyboard generation defaults to two concurrent shots and up to eight image attempts per unapproved shot. Practical continuity accepts minor texture, prop-position and nonessential background differences while protecting subject identity, the selected product, required actions and safety. A failed creative review can prompt a different camera/framing composition without changing the immutable references or story.
+
+`POST /api/movie-jobs/{jobId}/frames/{assetId}/decision` records an owned, revision-checked `keep` or `regenerate` decision plus a designer note. A kept frame is accepted because the designer chose it; its original AI verdict remains unchanged. Selecting an older candidate marks other candidates unselected rather than deleting their evidence. Regeneration invalidates prior approvals for that shot and supplies the note as correction data.
+
+The worker checks for designer choices before new attempts and after review. It atomically locks the selected approved storyboard before animation/rendering; API decisions cannot race a completed film into using a rejected frame. Provider-side content restrictions, valid-media checks and consent are never overridden by creative approval.
+
+Newly generated characters use the requested subtly slimmer presentation, disclosed in the consent UI. Original reference observations, source photos, face/hair/clothing identity, and designer-kept frames remain unchanged. That intentional mild presentation difference is not itself a continuity failure.
 
 ```mermaid
 sequenceDiagram

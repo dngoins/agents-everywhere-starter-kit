@@ -29,7 +29,7 @@ function product(): ProductReference {
 async function fixture(t: TestContext) {
   const directory = path.resolve(".movie-data", "tests", `jobs-${randomUUID()}`);
   await mkdir(directory, { recursive: true });
-  t.after(() => rm(directory, { recursive: true, force: true }));
+  t.after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const config: MovieConfig = { dataDir: directory, imageModel: "test", veoModel: "test" };
   return { directory, config, store: new JobStore(directory), media: new LocalMediaRepository(directory) };
 }

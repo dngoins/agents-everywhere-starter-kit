@@ -1,6 +1,6 @@
 import type {
   AssetRecord, CharacterReference, Consent, JobStatus, MoviePlan, PersonalizationProfile,
-  ProductReference, RenderResult, SceneTemplate, StoryboardFrame, VideoArtifact, StoryFormat, HeroMode,
+  ProductReference, RenderResult, SceneTemplate, StoryboardFrame, VideoArtifact, StoryFormat, HeroMode, ProductionMode, VideoProviderId,
 } from "./index";
 
 export interface MovieConfig {
@@ -9,12 +9,16 @@ export interface MovieConfig {
   visionModel?: string;
   directorModel?: string;
   imageModel: string;
+  videoModel?: string;
   googleKey?: string;
   veoModel: string;
   apiToken?: string;
   ffmpegPath?: string;
   ffprobePath?: string;
   musicPath?: string;
+  storyboardMaxAttempts?: number;
+  storyboardConcurrency?: number;
+  continuityPolicy?: "practical" | "strict";
 }
 
 export interface MediaRepository {
@@ -36,6 +40,9 @@ export interface GenerationContext {
   warn(message: string): Promise<void>;
   recordOperation(provider: string, id: string): Promise<void>;
   saveFrame(frame: StoryboardFrame): Promise<void>;
+  saveSceneFrame?(frame: StoryboardFrame): Promise<void>;
+  getFrames?(): Promise<StoryboardFrame[]>;
+  finalizeStoryboard?(): Promise<StoryboardFrame[]>;
 }
 
 export interface ReferenceService {
@@ -44,18 +51,18 @@ export interface ReferenceService {
 export interface DirectorService {
   plan(input: {
     character: CharacterReference; product: ProductReference;
-    profile: PersonalizationProfile; template: SceneTemplate; storyFormat?: StoryFormat; heroMode?: HeroMode;
+    profile: PersonalizationProfile; template: SceneTemplate; storyFormat?: StoryFormat; heroMode?: HeroMode; videoProvider?: VideoProviderId;
   }, context: GenerationContext): Promise<MoviePlan>;
 }
 export interface StoryboardService {
-  generate(input: { plan: MoviePlan; character: CharacterReference; product: ProductReference }, context: GenerationContext): Promise<StoryboardFrame[]>;
+  generate(input: { plan: MoviePlan; character: CharacterReference; product: ProductReference; existingFrames?: StoryboardFrame[]; productionMode?: ProductionMode }, context: GenerationContext): Promise<StoryboardFrame[]>;
 }
 export interface VideoService {
   generate(input: {
-    plan: MoviePlan; character: CharacterReference; product: ProductReference; frames: StoryboardFrame[];
+    plan: MoviePlan; character: CharacterReference; product: ProductReference; frames: StoryboardFrame[]; operationId?: string;
   }, context: GenerationContext): Promise<VideoArtifact | null>;
 }
 export interface RendererService {
   ready(): Promise<{ available: boolean; message: string }>;
-  render(input: { plan: MoviePlan; frames: StoryboardFrame[]; hero: VideoArtifact | null }, context: GenerationContext): Promise<RenderResult>;
+  render(input: { plan: MoviePlan; frames: StoryboardFrame[]; hero: VideoArtifact | null; productionMode?: ProductionMode }, context: GenerationContext): Promise<RenderResult>;
 }

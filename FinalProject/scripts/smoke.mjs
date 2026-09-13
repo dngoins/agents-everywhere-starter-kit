@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { DEMO_MEDIA, validateDemoMedia } from "../dist/providers/demo-media.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const deviceToken = randomBytes(32).toString("base64url");
@@ -110,15 +111,13 @@ const watchdog = setTimeout(() => {
 
 try {
   const png = await readFile(resolve(root, "fixtures", "media", "sample.png"));
-  const mp4 = await readFile(resolve(root, "fixtures", "media", "mock-preview.mp4"));
+  const mp4 = await readFile(resolve(root, "fixtures", "media", DEMO_MEDIA.filename));
   assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", "PNG fixture signature.");
   assert.equal(mp4.subarray(4, 8).toString("ascii"), "ftyp", "MP4 fixture signature.");
   assert.equal(createHash("sha256").update(png).digest("hex"),
     "b61b45c69462e4ddc37c1a92bc23e81e8646d0aa026544abbb590a9fd431a72c",
     "PNG must match the reviewed synthetic fixture.");
-  assert.equal(createHash("sha256").update(mp4).digest("hex"),
-    "7c585ba34069ed9b254869bec3c2dab16a7c436736d167aee4820bceff393e69",
-    "MP4 must match the independently decoded synthetic fixture.");
+  validateDemoMedia(mp4);
   child = spawn(process.execPath, ["--import", "./scripts/offline-network-guard.mjs", "dist/server.js"], {
     cwd: root, env, shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
   });
@@ -183,9 +182,12 @@ try {
     job = await command("get_media_status", { jobId: started.jobId });
   }
   assert.equal(job.status, "ready", "Synthetic job must reach ready.");
-  assert.equal(job.result?.provenance, "mock_fixture", "Mock media must retain truthful provenance.");
+  assert.equal(job.result?.provenance, DEMO_MEDIA.provenance, "Default demo must retain prerecorded provenance.");
   assert.equal(job.result.mimeType, "video/mp4");
-  assert.equal(job.result.durationSeconds, 1);
+  assert.equal(job.result.durationSeconds, DEMO_MEDIA.durationSeconds);
+  assert.equal(job.result.byteLength, DEMO_MEDIA.bytes);
+  assert.equal(job.result.checksum, DEMO_MEDIA.sha256);
+  assert.ok(job.warnings.some((warning) => warning.includes("not generated for this customer or brief")));
 
   stage = "authenticated media and ranges";
   const mediaPath = `${sessionPath()}/assets/${job.result.assetId}`;
@@ -193,7 +195,7 @@ try {
   const media = await request(mediaPath);
   assert.equal(media.headers.get("content-type"), "video/mp4");
   const bytes = Buffer.from(await media.arrayBuffer());
-  assert.deepEqual(bytes, mp4, "Delivered media must be the actual synthetic fixture.");
+  assert.deepEqual(bytes, mp4, "Delivered media must be the unmodified user-provided prerecorded demo.");
   assert.equal(bytes.subarray(4, 8).toString("ascii"), "ftyp");
   assert.equal(job.result.byteLength, bytes.length);
   assert.equal(job.result.checksum, createHash("sha256").update(bytes).digest("hex"));
@@ -233,7 +235,7 @@ if (failed || networkBlocked) {
 } else {
   console.log(JSON.stringify({
     event: "smoke_passed",
-    checks: "compiled API, auth, consent, mock flow, idempotency, MP4 bytes, range, simulated reveal, revocation, child cleanup",
+    checks: "compiled API, auth, consent, offline flow, idempotency, prerecorded demo bytes/hash/duration, range, simulated reveal, revocation, child cleanup",
     audiovisualPlaybackVerified: false,
   }));
 }

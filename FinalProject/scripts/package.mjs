@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { copyFile, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEMO_MEDIA, validateDemoMedia } from "../dist/providers/demo-media.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const artifacts = resolve(root, "artifacts");
@@ -14,6 +15,7 @@ const files = [
   "docs/runbook.md", "docs/contracts.md", "docs/moviepart-integration.md",
   "public/dev/index.html", "public/dev/app.js", "public/dev/styles.css",
   "fixtures/media/mock-preview.mp4", "fixtures/media/sample.png", "fixtures/media/README.md",
+  `fixtures/media/${DEMO_MEDIA.filename}`,
   "scripts/smoke.mjs", "scripts/offline-network-guard.mjs",
   "interfaces/v1/README.md", "interfaces/v1/DAMIAN.md", "interfaces/v1/TIYA.md",
   "interfaces/v1/types.d.ts", "interfaces/v1/contracts.schema.json",
@@ -63,6 +65,7 @@ try {
   }
   const fixture = await readFile(resolve(root, "fixtures", "media", "mock-preview.mp4"));
   if (fixture.subarray(4, 8).toString("ascii") !== "ftyp") throw new Error("Synthetic MP4 is invalid.");
+  validateDemoMedia(await readFile(resolve(root, "fixtures", "media", DEMO_MEDIA.filename)));
   try {
     await ensureOrdinary(artifacts, true);
   } catch (error) {
@@ -71,7 +74,7 @@ try {
   }
   try {
     await ensureOrdinary(staging, true);
-    await rm(staging, { recursive: true });
+    await rm(staging, { recursive: true, maxRetries: 5, retryDelay: 200 });
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -98,7 +101,7 @@ try {
   }
   const checksum = createHash("sha256").update(await readFile(archive)).digest("hex");
   await writeFile(resolve(artifacts, "magicpitch-demo.sha256"), `${checksum}  magicpitch-demo.tgz\n`);
-  await rm(staging, { recursive: true });
+  await rm(staging, { recursive: true, maxRetries: 5, retryDelay: 200 });
   ownsStaging = false;
   console.log(JSON.stringify({ event: "demo_packaged", archive: "artifacts/magicpitch-demo.tgz", fileCount: files.length, sha256: checksum }));
 } catch (error) {
@@ -106,7 +109,7 @@ try {
   process.exitCode = 1;
 } finally {
   if (ownsStaging) {
-    try { await rm(staging, { recursive: true }); } catch {
+    try { await rm(staging, { recursive: true, maxRetries: 5, retryDelay: 200 }); } catch {
       console.error("Could not remove the package's staging directory.");
       process.exitCode = 1;
     }

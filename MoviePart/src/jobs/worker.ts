@@ -1,9 +1,11 @@
-import { MovieError, type MovieJob, type RenderResult } from "../domain";
+import { MovieError, type MovieJob, type RenderResult, type StoryboardFrame } from "../domain";
 import type { GenerationContext, MovieConfig } from "../domain/services";
 import { LocalMediaRepository } from "../server/media";
 import { JobStore, terminal, WORKER_HEARTBEAT_MS } from "./store";
+import { selectStoryboardFrames } from "../domain/storyboard-state";
+import { validateRenderInput } from "../render";
 
-type Checkpoint = (patch: Partial<Pick<MovieJob, "character" | "plan" | "hero">>) => Promise<void>;
+type Checkpoint = (patch: Partial<Pick<MovieJob, "character" | "plan" | "hero" | "heroAttempted" | "result">>) => Promise<void>;
 export type MovieExecutor = (job: MovieJob, context: GenerationContext, checkpoint: Checkpoint, config: MovieConfig) => Promise<RenderResult>;
 
 export class MovieWorker {
@@ -67,6 +69,16 @@ export class MovieWorker {
         change(current);
       });
     };
+    const saveFrame = async (frame: StoryboardFrame, scene = false) => {
+      const asset = await this.media.requireOwned(frame.assetId, job.ownerId);
+      if (asset.jobId !== job.id) throw new MovieError("INVALID_ARTIFACT", "A frame asset belongs to a different job.");
+      await mutate(current => {
+        const frames = scene ? current.sceneFrames ??= [] : current.frames;
+        const index = frames.findIndex(existing => existing.assetId === frame.assetId);
+        if (index >= 0) frames[index] = { ...frame, ...(frames[index].designerDecision ? { designerDecision: frames[index].designerDecision } : {}) };
+        else frames.push(frame);
+      });
+    };
     const context: GenerationContext = {
       jobId: job.id, ownerId: job.ownerId, media: this.media, signal: this.controller.signal,
       report: async update => {
@@ -87,14 +99,18 @@ export class MovieWorker {
           current.operations.push({ provider, id });
         }
       }),
-      saveFrame: async frame => {
-        const asset = await this.media.requireOwned(frame.assetId, job.ownerId);
-        if (asset.jobId !== job.id) throw new MovieError("INVALID_ARTIFACT", "A storyboard asset belongs to a different job.");
-        await mutate(current => {
-          const index = current.frames.findIndex(existing => existing.assetId === frame.assetId);
-          if (index >= 0) current.frames[index] = frame;
-          else current.frames.push(frame);
+      saveFrame: frame => saveFrame(frame),
+      saveSceneFrame: frame => saveFrame(frame, true),
+      getFrames: async () => (await this.store.get(job.id)).frames,
+      finalizeStoryboard: async () => {
+        const locked = await this.store.update(job.id, current => {
+          this.controller.signal.throwIfAborted();
+          if (terminal(current) || !current.plan) throw new MovieError("JOB_TERMINAL", "The movie is no longer available for rendering.", 409);
+          const selected = selectStoryboardFrames(current.frames, current.plan.shots.map(shot => shot.id));
+          validateRenderInput({ plan: current.plan, frames: selected, hero: current.hero }, current.id);
+          current.storyboardLocked = true;
         });
+        return selectStoryboardFrames(locked.frames, locked.plan!.shots.map(shot => shot.id));
       },
     };
     try {

@@ -9,6 +9,7 @@ import { compileShotBlock } from "../../director/promptCompiler";
 import { createOpenAITransport, rethrowCancellation, type OpenAITransport } from "../openai/client";
 import { downloadVeoVideo, MAX_VIDEO_BYTES } from "../../video/download";
 import { inspectVideo } from "../../video/inspect";
+import { isFrameApproved } from "../../domain/storyboard-state";
 
 export interface VeoTransport {
   generate(input: GenerateVideosParameters): Promise<GenerateVideosOperation>;
@@ -54,7 +55,7 @@ export function createVeoService(config: MovieConfig, dependencies: VeoDependenc
       try {
         const heroId = input.plan.heroShotId;
         const shot = input.plan.shots.find(value => value.id === heroId);
-        const first = input.frames.find(frame => frame.shotId === heroId && frame.continuity.verdict === "PASS");
+        const first = input.frames.find(frame => frame.shotId === heroId && isFrameApproved(frame));
         if (!shot || shot.durationSeconds !== 8 || !first) throw new MovieError("INVALID_HERO_INPUT", "The eight-second approved hero shot is required.");
         const frameInput: FrameInput = { plan: input.plan, character: input.character, product: input.product, shot };
         assertFrameInput(frameInput);
@@ -62,7 +63,7 @@ export function createVeoService(config: MovieConfig, dependencies: VeoDependenc
         const end = await (dependencies.endFrame ?? ((frame, ctx, start) => generateApprovedFrame(config, openai, frame, ctx, start)))(
           { ...frameInput, endpoint: "end" }, context, first.assetId,
         );
-        if (end.continuity.verdict !== "PASS" || end.shotId !== `${heroId}_end`) throw new MovieError("INVALID_HERO_INPUT", "The matching hero end frame was not approved.");
+        if (!isFrameApproved(end) || end.shotId !== `${heroId}_end`) throw new MovieError("INVALID_HERO_INPUT", "The matching hero end frame was not approved.");
         const [firstImage, lastImage] = await Promise.all([
           readImage(first.assetId, "supplement", "Approved hero start", context),
           readImage(end.assetId, "supplement", "Approved hero end", context),

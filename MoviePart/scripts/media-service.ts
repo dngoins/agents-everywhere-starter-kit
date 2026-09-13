@@ -9,8 +9,10 @@ async function main() {
   const port = Number(process.env.MEDIA_SERVICE_PORT ?? 3201);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("INVALID_PORT");
   const tools = { ffmpeg: process.env.FFMPEG_PATH, ffprobe: process.env.FFPROBE_PATH };
+  const jobTimeoutMs = Number(process.env.MEDIA_SERVICE_JOB_TIMEOUT_MS ?? 600_000);
   const service = new MediaService({
     directory: path.join(process.env.MOVIE_DATA_DIR ?? ".movie-data", "media-service"),
+    jobTimeoutMs,
     executor: createLiveExecutor({
       ...tools, apiKey: process.env.OPENAI_API_KEY, imageModel: process.env.OPENAI_IMAGE_MODEL,
     }),

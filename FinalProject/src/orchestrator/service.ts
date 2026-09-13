@@ -10,6 +10,7 @@ import {
 import type { BriefProvider, MediaInput, MediaOutput, MediaProvider, ProfileProvider } from '../providers/interfaces.js';
 import { createMockBriefProvider, createMockProfileProvider, isMockProfileProvider } from '../providers/mock.js';
 import { ProviderFailure } from '../providers/http-client.js';
+import { isPrerecordedDemoProvider } from '../providers/demo-media.js';
 import { ApiError } from './errors.js';
 
 export { ApiError } from './errors.js';
@@ -602,8 +603,11 @@ export class Orchestrator {
         };
         try {
           const primary = this.validateMedia(await generate(this.options.mediaProvider));
-          if (primary.provenance === 'prerendered_fallback') {
+          if (primary.provenance === 'prerendered_fallback' && !isPrerecordedDemoProvider(this.options.mediaProvider)) {
             throw new ApiError(502, 'INVALID_MEDIA_OUTPUT', 'A prerecorded fallback must be explicitly selected.');
+          }
+          if (primary.provenance === 'prerendered_fallback') {
+            record.job.warnings.push('Prerecorded demo media; not generated for this customer or brief.');
           }
           return primary;
         } catch (error) {

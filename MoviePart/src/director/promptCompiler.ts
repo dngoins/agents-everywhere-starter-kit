@@ -3,14 +3,16 @@
  * Preserve its SHOT / SUBJECT / ACTION / CAMERA / SETTING / LIGHTING / MOOD /
  * STYLE / SOUND / CAR block while using this application's validated contracts.
  */
-import { resolveHeroMode, type MoviePlan, type ProductReference, type ShotPlan } from "../domain";
+import { isOpenAIHero, resolveHeroMode, type MoviePlan, type ProductReference, type ShotPlan } from "../domain";
 import { getBeatMetadata, getTemplate } from "../templates";
 
 export function compileShotBlock(plan: MoviePlan, shot: ShotPlan, product?: ProductReference): string {
   const template = getTemplate(plan.templateId, plan.storyFormat);
   const beat = getBeatMetadata(plan.templateId, plan.storyFormat, shot);
   const mode = resolveHeroMode(plan.heroMode);
-  const subject = mode === "POV"
+  const subject = isOpenAIHero(plan, shot.id)
+    ? "The exact reference-backed vehicle only. No visible people, faces, hands or human reflections."
+    : mode === "POV"
     ? "First-person viewpoint; anonymous hands only, no faces or reflections."
     : mode === "PERSONALIZED"
       ? "Generic non-identifiable back-view protagonist or silhouette, never a customer likeness."
