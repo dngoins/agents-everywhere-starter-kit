@@ -198,6 +198,7 @@ test("every image submission includes all original customer/product bytes and di
     assert.equal(options.maxRetries, 0);
     assert.equal(request.model, "gpt-image-2.5-flare");
     assert.equal(request.size, "1536x864");
+    assert.equal(Object.hasOwn(request, "input_fidelity"), false);
     assert.ok(Array.isArray(request.image));
     const uploads = request.image;
     assert.equal(uploads.length, 4);

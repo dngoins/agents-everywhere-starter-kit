@@ -88,6 +88,14 @@ OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
 
 Select vision/text models your account actually supports. The image adapter uses reference-conditioned editing. Account access, organization verification, quota, and current provider policy may prevent a real request even when a key is configured. Readiness indicates local configuration, not a paid account probe.
 
+Storyboard request options depend on the image model. GPT Image 2.x, including `gpt-image-2.5-flare`, is sent a native 16:9 size without `input_fidelity`; the endpoint rejects that legacy parameter for Flare. GPT Image 1/1.5 uses the supported landscape size and high input fidelity; GPT Image 1 Mini omits the fidelity parameter. Final frames are normalized to 1280x720 without stretching or cropping the references. A parameter-rejection error is not a billing failure.
+
+### OpenAI billing and rate-limit failures
+
+HTTP 429 does not always mean temporary throttling. `credit_balance_exhausted` means the API organization has no prepaid credits left; add credits in [OpenAI API billing](https://platform.openai.com/settings/organization/billing). Project/organization spend limits and approved usage limits have separate error codes and recovery instructions. Changing the model or repeatedly clicking Create does not restore exhausted credits.
+
+For a genuine `rate_limit_exceeded` or `slow_down` response, wait for the reported retry interval when available and reduce request frequency. The app reports these separately from billing failures and never automatically resubmits a paid generation. An accessible model catalog entry alone does not confirm available billing credit.
+
 Start the UI/API and worker in **two terminals**, both in `MoviePart`:
 
 ```powershell
