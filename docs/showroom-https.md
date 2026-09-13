@@ -232,4 +232,6 @@ npm --prefix FinalProject test -- test\kiosk-config.test.ts
 Set-Location MoviePart
 node --import tsx --test tests\showroom-gateway.test.ts tests\launcher-isolation.test.ts
 node node_modules\typescript\bin\tsc -p tsconfig.showroom-gateway.json
+# After npm run build; uses ephemeral loopback servers and a fake upstream:
+node --test integration-tests\showroom-gateway.test.mjs
 ```
