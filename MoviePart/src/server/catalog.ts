@@ -86,7 +86,7 @@ export class ProductCatalog {
     exterior: Uint8Array; interior: Uint8Array;
   }): Promise<ProductReference> {
     const choice = vehicleChoice(input.id);
-    if (!choice) throw new MovieError("UNKNOWN_PRODUCT", "Choose Tesla Model Y or Toyota Tundra Hybrid.", 400);
+    if (!choice) throw new MovieError("UNKNOWN_PRODUCT", "Choose a supported Toyota or Lexus vehicle.", 400);
     const [exterior, interior] = await Promise.all([
       this.media.saveProduct(input.exterior), this.media.saveProduct(input.interior),
     ]);

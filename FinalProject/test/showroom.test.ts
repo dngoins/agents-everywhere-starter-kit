@@ -20,7 +20,7 @@ import {
 
 const consent = { policyVersion: 'showroom-v1', personalization: true, capture: true, likeness: true, providerTransfer: true, calendar: false, motion: false };
 const selection: StudioSelection = {
-  productId: 'tesla-model-y', templateId: 'DREAM_ROUTE', heroMode: 'LIKENESS',
+  productId: 'toyota-camry', templateId: 'DREAM_ROUTE', heroMode: 'LIKENESS',
   productionMode: 'reviewed-storyboard', videoProvider: 'google-veo', enableHeroVideo: true,
   storyFormat: 'four-shot', renderLayout: 'video-bookends', movieDurationSeconds: 15,
 };

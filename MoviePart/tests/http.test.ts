@@ -9,6 +9,7 @@ import { SessionAuth, validateHost } from "../src/server/auth";
 import { JobStore } from "../src/jobs/store";
 import { LocalMediaRepository } from "../src/server/media";
 import type { MovieConfig } from "../src/domain/services";
+import { vehicleChoices } from "../src/catalog/vehicles";
 
 const base = "http://127.0.0.1:3200";
 const consent = { likeness: true, personalization: true };
@@ -76,10 +77,7 @@ test("config DTO is direct, private, establishes a session, and reports missing 
   const data = await response.json();
   assert.deepEqual(Object.keys(data).sort(), ["products", "providers", "renderer", "templates", "worker"]);
   assert.equal(data.templates.length, 4);
-  assert.deepEqual(data.products, [
-    { id: "tesla-model-y", name: "Tesla Model Y", ready: false },
-    { id: "toyota-tundra-hybrid", name: "Toyota Tundra Hybrid", ready: false },
-  ]);
+  assert.deepEqual(data.products, vehicleChoices.map(({ id, name }) => ({ id, name, ready: false })));
   assert.equal(data.worker.available, false);
   assert.equal(data.renderer.message, "Explicit test renderer.");
   assert.match(response.headers.get("cache-control")!, /no-store/);

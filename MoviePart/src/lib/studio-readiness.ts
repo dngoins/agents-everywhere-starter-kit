@@ -14,7 +14,7 @@ export function creationBlockers(input: {
   photoCount: number; generationConsent: boolean; personalizationConsent: boolean;
 }): string[] {
   const blockers: string[] = [];
-  if (!input.productId) blockers.push("Choose Tesla Model Y or Toyota Tundra Hybrid.");
+  if (!input.productId) blockers.push("Choose a Toyota or Lexus vehicle.");
   else if (!input.config?.products.some(product => product.id === input.productId && product.ready)) {
     blockers.push("Add permitted exterior and interior reference photos for your selected car, then save the reference pack.");
   }

@@ -54,7 +54,7 @@ export default function MovieStudio() {
   const [files, setFiles] = useState<File[]>([]);
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [primary, setPrimary] = useState(0);
-  const [product, setProduct] = useState("tesla-model-y");
+  const [product, setProduct] = useState("toyota-camry");
   const [template, setTemplate] = useState<TemplateId>("TOMORROW_DRIVE");
   const [storyFormat, setStoryFormat] = useState<StoryFormat>("four-shot");
   const [movieDuration, setMovieDuration] = useState<MovieDuration>(15);

@@ -7,6 +7,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MovieRecovery } from "../src/components/movie-recovery";
 import type { JobView } from "../integration/contracts";
+import { vehicleChoices } from "../src/catalog/vehicles";
 
 test("studio shows four current frames, not extra hero end frames or rejected attempts", () => {
   const frame = (shotId: string, assetId: string): StoryboardFrame => ({
@@ -27,14 +28,14 @@ test("six-shot view keeps all narrative frames and excludes supplemental end fra
   assert.deepEqual(mainStoryboardFrames(frames, ids).map(frame => frame.shotId), ids);
 });
 
-test("both real vehicle choices remain selectable before the server configuration loads", () => {
-  assert.deepEqual(selectableProducts(null).map(product => product.name), ["Tesla Model Y", "Toyota Tundra Hybrid"]);
+test("the Toyota and Lexus lineup remains selectable before the server configuration loads", () => {
+  assert.deepEqual(selectableProducts(null).map(product => product.name), vehicleChoices.map(product => product.name));
   assert.ok(selectableProducts(null).every(product => !product.ready));
 });
 
 test("creation explains every missing prerequisite instead of silently disabling the button", () => {
   const missing = creationBlockers({
-    config: null, productId: "tesla-model-y", needsPhotos: true,
+    config: null, productId: "toyota-camry", needsPhotos: true,
     photoCount: 0, generationConsent: false, personalizationConsent: false,
   });
   assert.equal(missing.length, 5);
@@ -42,11 +43,11 @@ test("creation explains every missing prerequisite instead of silently disabling
   assert.match(missing.join(" "), /Reconnect/);
   assert.deepEqual(creationBlockers({
     config: {
-      products: [{ id: "tesla-model-y", name: "Tesla Model Y", ready: true }], templates: [],
+      products: [{ id: "toyota-camry", name: "Toyota Camry", ready: true }], templates: [],
       providers: { openai: { available: true, message: "Ready" }, veo: { available: false, message: "Optional" } },
       worker: { available: true, message: "Ready" }, renderer: { available: true, message: "Ready" },
     },
-    productId: "tesla-model-y", needsPhotos: false, photoCount: 0,
+    productId: "toyota-camry", needsPhotos: false, photoCount: 0,
     generationConsent: true, personalizationConsent: true,
   }), []);
 });

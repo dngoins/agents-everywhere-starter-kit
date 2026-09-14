@@ -274,7 +274,7 @@ Only JPEG, PNG, and WebP are accepted, bounded to 10 MiB per file, 40 MiB per co
 
 Place the authorized car reference pack in the private local catalog described in [demo-data](demo-data/README.md). The app deliberately does not ship an invented car, unlicensed reference photos, or a fake successful generation. A curated car's appearance and approved claims must match its real references.
 
-The studio now offers **Tesla Model Y** and **Toyota Tundra Hybrid** separately. Select a vehicle, upload its permitted exterior and interior photos, and record the actual color/source. Each remains marked **add references** until its own pack is ready. This does not change Dwight's synthetic `demo-car-v1` contract.
+The studio offers the current Toyota/Lexus showroom catalog, including Tacoma, Camry, bZ, Tundra, Land Cruiser, Lexus LC, ES, RZ and the broader supported lineups. Select a vehicle, upload its permitted exterior and interior photos, and record the actual color/source. Each remains marked **add references** until its own pack is ready. This does not change Dwight's synthetic `demo-car-v1` contract.
 
 ### Renderer, native audio, and optional music
 
@@ -317,7 +317,7 @@ The complete portable contract is [integration/contracts.ts](integration/contrac
 |---|---|
 | `GET /api/movie-config` | Templates, product IDs, local readiness; creates the demo browser session |
 | `POST /api/movie-assets` | Consent-gated private photo upload |
-| `POST /api/movie-products/{productId}/references` | Operator-confirmed exterior/interior references for the selected Tesla or Toyota |
+| `POST /api/movie-products/{productId}/references` | Operator-confirmed exterior/interior references for the selected Toyota or Lexus |
 | `POST /api/movie-jobs` | Idempotent asynchronous submission; returns 202 |
 | `GET /api/movie-jobs/{jobId}` | Current status, artifacts, progress, warnings, and errors |
 | `POST /api/movie-jobs/{jobId}/retry` | Explicit, idempotent recovery using the saved plan and approved shots |
@@ -352,7 +352,7 @@ The kiosk pairs with a device token or joins an existing session from Damian's t
 
 The media service accepts authenticated, globally idempotent `POST /jobs`, returns acceptance before generation, exposes `GET /jobs/{providerJobId}`, and serves only same-base relative MP4 paths. `DELETE /jobs/by-key/{jobId}` must tombstone the key, stop renderer-held work and delete local participant assets before acknowledging cleanup. Dwight calls it after downloading the result as well as on cancellation/failure. This brief-based media service is separate from the creator studio's Veo/Sora bookend workflow; selecting a studio video provider does not upgrade this service.
 
-`demo-car-v1` is a synthetic concept brief, not a real Tesla catalog. Its scenes, on-screen copy, CTA and total duration are separate from the creator studio's four/six-shot templates. Agree a real product contract before presenting it as a real-customer product advertisement.
+`demo-car-v1` is a synthetic concept brief, not a real production catalog. Its scenes, on-screen copy, CTA and total duration are separate from the creator studio's four/six-shot templates. Agree a real product contract before presenting it as a real-customer product advertisement.
 
 Provider-side retention and already submitted billable operations are not erased by local deletion. Consult the chosen provider's retention policy; a local cancellation acknowledgement covers renderer-held files/work only.
 
