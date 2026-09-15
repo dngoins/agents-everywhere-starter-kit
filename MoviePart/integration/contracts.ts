@@ -265,6 +265,14 @@ export interface FrameDecisionRequest {
   resume?: boolean;
 }
 
+export interface HeroEndpointSelectionRequest {
+  role: "start" | "end";
+  asset_id: string;
+  idempotency_key: string;
+  expected_revision: number;
+  expected_attempt: number;
+}
+
 export interface JobView {
   id: string;
   sessionId: string;
@@ -289,6 +297,9 @@ export interface JobView {
   retry?: MovieRetrySummary;
   reviewRevision?: number;
   designerReviewAllowed?: boolean;
+  heroEndpoints?: { startAssetId?: string; endAssetId?: string };
+  heroEndpointRevision?: number;
+  heroEndpointSelectionAllowed?: boolean;
 }
 
 export interface JobResponse { job: JobView }

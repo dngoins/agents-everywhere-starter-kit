@@ -127,6 +127,35 @@ test("Veo uses supported first/last byte inputs, exactly eight seconds, no SDK r
   assert.deepEqual(f.warnings, []);
 });
 
+test("Veo uses explicitly selected approved storyboard frames as its start and end", async () => {
+  const f = await fixture();
+  const selectedBytes = await sharp({ create: { width: 1280, height: 720, channels: 3, background: "#446688" } }).png().toBuffer();
+  const start = await f.context.media.saveAsset({
+    ownerId: f.context.ownerId, jobId: f.context.jobId, kind: "storyboard", mime: "image/png",
+    bytes: selectedBytes, width: 1280, height: 720,
+  });
+  const end = await f.context.media.saveAsset({
+    ownerId: f.context.ownerId, jobId: f.context.jobId, kind: "storyboard", mime: "image/png",
+    bytes: await sharp({ create: { width: 1280, height: 720, channels: 3, background: "#224466" } }).png().toBuffer(),
+    width: 1280, height: 720,
+  });
+  const startFrame: StoryboardFrame = { ...f.input.frames[0], shotId: "shot_01", assetId: start.id };
+  const endFrame: StoryboardFrame = {
+    ...f.input.frames[0], shotId: "shot_04", assetId: end.id,
+  };
+  f.input.frames.push(startFrame, endFrame);
+  f.dependencies.endFrame = async () => assert.fail("A manually selected end frame must not be regenerated");
+  let submitted: GenerateVideosParameters | undefined;
+  const generate = f.transport.generate;
+  f.transport.generate = async request => { submitted = request; return generate(request); };
+  assert.ok(await createVeoService(config, f.dependencies).generate({
+    ...f.input,
+    heroEndpoints: { startAssetId: start.id, endAssetId: end.id },
+  }, f.context));
+  assert.equal(submitted?.source?.image?.imageBytes, Buffer.from(f.entries.get(start.id)!).toString("base64"));
+  assert.equal(submitted?.config?.lastFrame?.imageBytes, Buffer.from(f.entries.get(end.id)!).toString("base64"));
+});
+
 test("six-shot Veo selects shot_04 and its matching end frame, preserving explicit no-likeness modes", async () => {
   for (const heroMode of ["POV", "PERSONALIZED"] as const) {
     const f = await fixture();

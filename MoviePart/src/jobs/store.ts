@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { frameDecisionRequestSchema, jobSchema, productionModeOf, retryRequestSchema, MovieError, type FrameDecisionRequest, type JobRequest, type MovieJob, type ProductReference, type RetryRequest, type StoryboardFrame } from "../domain";
+import { frameDecisionRequestSchema, heroEndpointSelectionRequestSchema, jobSchema, productionModeOf, retryRequestSchema, MovieError, type FrameDecisionRequest, type HeroEndpointSelectionRequest, type JobRequest, type MovieJob, type ProductReference, type RetryRequest, type StoryboardFrame } from "../domain";
 import type { Readiness } from "../domain/http";
 import { atomicWrite, isMissing, processAlive, readJson, withDiskLock } from "../server/files";
 import type { LocalMediaRepository } from "../server/media";
@@ -10,6 +10,7 @@ import { retrySummary, validateSavedPlan } from "./retry";
 import { assertJobNotCancelled, jobReceiptSchema, referencedAssets, type JobReceipt } from "./lifecycle";
 import { assertVeoRecoverable } from "../domain/veo-failure";
 import { hasUncertainVideoSegment, savedVideoSegments } from "../domain/video-sequence-state";
+import { isFrameApproved } from "../domain/storyboard-state";
 
 export const WORKER_HEARTBEAT_MS = 3_000;
 export const WORKER_STALE_MS = 15_000;
@@ -341,6 +342,63 @@ export class JobStore {
         const key = `designer-${createHash("sha256").update(request.idempotency_key).digest("hex")}`;
         return (await this.requeue(job, { idempotency_key: key, expected_attempt: request.expected_attempt })).job;
       }
+      await this.write(job);
+      return job;
+    });
+  }
+
+  async selectHeroEndpoint(
+    id: string, ownerId: string, input: HeroEndpointSelectionRequest,
+    verifyFrame: (job: MovieJob, frame: StoryboardFrame) => Promise<void>,
+  ): Promise<MovieJob> {
+    const request = heroEndpointSelectionRequestSchema.parse(input);
+    return this.transaction(async () => {
+      const job = await this.getOwned(id, ownerId);
+      assertJobNotCancelled(job);
+      if (await this.isCancellationRequested(id)) throw new MovieError("JOB_CANCELLED", "This movie was cancelled.", 410);
+      const previous = job.heroEndpointSelections?.find(item => item.request.idempotency_key === request.idempotency_key);
+      if (previous) {
+        if (canonical(previous.request) !== canonical(request)) {
+          throw new MovieError("IDEMPOTENCY_CONFLICT", "This hero-endpoint key was used for different input.", 409);
+        }
+        return job;
+      }
+      if (request.expected_revision !== (job.heroEndpointSelections?.length ?? 0) ||
+          request.expected_attempt !== (job.retries?.length ?? 0)) {
+        throw new MovieError("STALE_HERO_ENDPOINT", "The movie or hero endpoints changed. Refresh before choosing this frame.", 409);
+      }
+      if (job.request.video_provider !== "google-veo" || !job.request.enable_hero_video || !job.plan || !job.character) {
+        throw new MovieError("HERO_ENDPOINT_UNAVAILABLE", "Manual hero endpoints are available only for a planned Google Veo movie.", 409);
+      }
+      if (job.hero || job.heroAttempted || job.operations.some(operation => operation.provider === "Google Veo")) {
+        throw new MovieError("HERO_LOCKED", "Veo has already been attempted for this take. Create a new take to change its hero endpoints.", 409);
+      }
+      if (job.status !== "FAILED" || job.error?.code !== "HERO_ENDPOINT_SELECTION_REQUIRED") {
+        throw new MovieError("HERO_ENDPOINT_UNAVAILABLE", "Wait for storyboard generation to pause before choosing hero endpoints.", 409);
+      }
+      const frame = job.frames.find(item => item.assetId === request.asset_id);
+      if (!frame || frame.source === "extracted" || !job.plan.shots.some(shot => shot.id === frame.shotId)) {
+        throw new MovieError("FRAME_NOT_FOUND", "This movie does not contain that storyboard frame.", 404);
+      }
+      if (!isFrameApproved(frame)) {
+        throw new MovieError("FRAME_NOT_APPROVED", "Choose an approved storyboard image for the Veo endpoint.", 409);
+      }
+      await verifyFrame(job, frame);
+      const otherAssetId = request.role === "start" ? job.heroEndpoints?.endAssetId : job.heroEndpoints?.startAssetId;
+      if (otherAssetId === request.asset_id) {
+        throw new MovieError("HERO_ENDPOINTS_IDENTICAL", "Choose two different storyboard images for the hero start and end.", 409);
+      }
+      const at = new Date().toISOString();
+      job.heroEndpoints = {
+        ...job.heroEndpoints,
+        ...(request.role === "start" ? { startAssetId: request.asset_id } : { endAssetId: request.asset_id }),
+      };
+      job.heroEndpointSelections = [...(job.heroEndpointSelections ?? []), { request, at }];
+      job.updatedAt = at;
+      job.events.push({
+        at, stage: job.status, provider: "Designer", shotId: frame.shotId,
+        message: `Designer selected ${frame.shotId} as the Veo hero ${request.role} frame.`,
+      });
       await this.write(job);
       return job;
     });

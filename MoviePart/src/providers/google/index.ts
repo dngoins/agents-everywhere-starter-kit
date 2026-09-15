@@ -60,7 +60,9 @@ export function createVeoService(config: MovieConfig, dependencies: VeoDependenc
       try {
         const heroId = input.plan.heroShotId;
         const shot = input.plan.shots.find(value => value.id === heroId);
-        const first = input.frames.find(frame => frame.shotId === heroId && isFrameApproved(frame));
+        const first = input.heroEndpoints
+          ? input.frames.find(frame => frame.assetId === input.heroEndpoints!.startAssetId && isFrameApproved(frame))
+          : input.frames.find(frame => frame.shotId === heroId && isFrameApproved(frame));
         if (!shot || shot.durationSeconds !== 8 || !first) throw new MovieError("INVALID_HERO_INPUT", "The eight-second approved hero shot is required.");
         const frameInput: FrameInput = { plan: input.plan, character: input.character, product: input.product, shot };
         assertFrameInput(frameInput);
@@ -87,6 +89,14 @@ export function createVeoService(config: MovieConfig, dependencies: VeoDependenc
             if (asset.ownerId !== context.ownerId || asset.jobId !== context.jobId || asset.kind !== "storyboard") {
               throw new MovieError("INVALID_REFERENCE", "A continuation frame must belong to this movie's generated footage.", 403);
             }
+          } else if (input.heroEndpoints) {
+            await validateApprovedFrame(first, context);
+            const selectedEnd = input.frames.find(frame => frame.assetId === input.heroEndpoints!.endAssetId && isFrameApproved(frame));
+            if (!selectedEnd || selectedEnd.assetId === startAssetId) {
+              throw new MovieError("INVALID_HERO_INPUT", "The selected Veo hero endpoints must be two different approved storyboard images.", 409);
+            }
+            await validateApprovedFrame(selectedEnd, context);
+            endAssetId = selectedEnd.assetId;
           } else {
             const savedEnd = selectStoryboardFrames(await context.getFrames?.() ?? [], [`${heroId}_end`])[0];
             let end: StoryboardFrame;

@@ -7,11 +7,11 @@ import { allTemplates as templates, getTemplate } from "../templates";
 import { mainStoryboardFrames } from "../lib/storyboard-view";
 import { MovieMagicClient, MovieMagicHttpError } from "../../integration/client";
 import { creationBlockers, selectableProducts } from "../lib/studio-readiness";
-import type { FrameDecisionRequest, MovieRetryRequest, StoryboardFrame } from "../../integration/contracts";
+import type { FrameDecisionRequest, HeroEndpointSelectionRequest, MovieRetryRequest, StoryboardFrame } from "../../integration/contracts";
 import { MovieRecovery } from "../components/movie-recovery";
 import { productionTiming } from "../lib/production-timing";
 import { isFrameApproved } from "../domain/storyboard-state";
-import { DesignerFrameControls } from "../components/designer-frame-controls";
+import { DesignerFrameControls, HeroEndpointControls } from "../components/designer-frame-controls";
 
 const stageLabels: Record<JobStatus, string> = {
   RECEIVED: "Queued for the studio",
@@ -79,6 +79,7 @@ export default function MovieStudio() {
   const [candidateChoices, setCandidateChoices] = useState<Record<string, string>>({});
   const decisionInFlight = useRef(false);
   const pendingDecision = useRef<{ jobId: string; assetId: string; request: FrameDecisionRequest } | null>(null);
+  const pendingHeroEndpoint = useRef<{ jobId: string; request: HeroEndpointSelectionRequest } | null>(null);
   const retryInFlight = useRef(false);
   const pendingRetry = useRef<{ jobId: string; request: MovieRetryRequest } | null>(null);
   const pendingRequest = useRef<JobRequest | null>(null);
@@ -299,6 +300,7 @@ export default function MovieStudio() {
           expected_revision: job.reviewRevision ?? 0, expected_attempt: job.retry?.attempt ?? 0, resume: false },
       };
     }
+
     try {
       const updated = await new MovieMagicClient({ baseUrl: window.location.origin }).decideFrame(job.id, frame.assetId, pendingDecision.current!.request);
       setJob(updated);
@@ -315,6 +317,41 @@ export default function MovieStudio() {
     } catch (failure) {
       if (failure instanceof MovieMagicHttpError && ["STALE_REVIEW", "REVIEW_LOCKED"].includes(failure.code)) pendingDecision.current = null;
       setRetryError(failure instanceof Error ? failure.message : "The designer decision could not be saved.");
+    } finally {
+      decisionInFlight.current = false;
+      setDesignerBusy(false);
+      setPollRevision(value => value + 1);
+    }
+  }
+
+  async function selectHeroEndpoint(frame: StoryboardFrame, role: "start" | "end") {
+    if (!job || !job.heroEndpointSelectionAllowed || decisionInFlight.current || submitting || retrying) return;
+    decisionInFlight.current = true;
+    setDesignerBusy(true);
+    setDesignerMessage("");
+    setRetryError("");
+    const prior = pendingHeroEndpoint.current;
+    if (!prior || prior.jobId !== job.id || prior.request.asset_id !== frame.assetId || prior.request.role !== role) {
+      pendingHeroEndpoint.current = {
+        jobId: job.id,
+        request: {
+          role, asset_id: frame.assetId, idempotency_key: crypto.randomUUID(),
+          expected_revision: job.heroEndpointRevision ?? 0, expected_attempt: job.retry?.attempt ?? 0,
+        },
+      };
+    }
+    const pending = pendingHeroEndpoint.current!;
+    try {
+      const updated = await new MovieMagicClient({ baseUrl: window.location.origin })
+        .selectHeroEndpoint(job.id, pending.request);
+      setJob(updated);
+      pendingHeroEndpoint.current = null;
+      setDesignerMessage(`${frame.shotId} is now the Veo hero ${role} frame.`);
+    } catch (failure) {
+      if (failure instanceof MovieMagicHttpError && ["STALE_HERO_ENDPOINT", "HERO_LOCKED"].includes(failure.code)) {
+        pendingHeroEndpoint.current = null;
+      }
+      setRetryError(failure instanceof Error ? failure.message : "The hero endpoint could not be saved.");
     } finally {
       decisionInFlight.current = false;
       setDesignerBusy(false);
@@ -517,6 +554,10 @@ export default function MovieStudio() {
 
           <div className="storyboard-heading"><h3>{movieFirst ? "Storyboard extracted from the movie" : "The storyboard"} <span>{String(storyboardFrames.length).padStart(2, "0")} / {String(shotIds.length).padStart(2, "0")}</span></h3><span className="small-muted">{movieFirst ? "ACTUAL MOVIE FRAMES" : "CONSISTENT REFERENCES. ONE STORY."}</span></div>
           {bookends && <p className="field-help">These approved images are story references, not extra still shots in the movie. The final cut uses the animation's first and last frames as its only zoomed bookends, with real video throughout the middle. {job ? `${job.videoClips?.length ?? Number(!!job.hero)} of ${getMovieFormat(job.movieDurationSeconds).clipCount} animation clips ready.` : ""}</p>}
+          {job?.heroEndpointSelectionAllowed && <div className="hero-endpoint-gate" role="status">
+            <strong>Choose Veo’s start and end frames</strong>
+            <p>Select two different approved storyboard images below. Veo will receive exactly those images; no paid video request is made until both selections are saved and you continue the movie.</p>
+          </div>}
           {job?.plan && !completeMovie && <p className="incomplete-label">{movieFirst ? "The movie is being made first. Its storyboard images will appear after encoding." : approvedCount < shotIds.length ? `Incomplete storyboard preview — ${approvedCount} of ${shotIds.length} shots approved. This is not a finished movie.` : "All storyboard shots are approved. Final movie assembly has not completed."}</p>}
           <div className={`storyboard-grid ${shotIds.length === 6 ? "six-shots" : ""}`}>{shotIds.map((shotId, index) => {
             const candidates = job?.frames.filter(item => item.shotId === shotId) ?? [];
@@ -528,6 +569,12 @@ export default function MovieStudio() {
               <span className="frame-number">0{index + 1}</span></div><div className="frame-detail"><span>{(shotIds.length === 6 ? ["ORDINARY MOMENT", "THE SPARK", "CROSSING OVER", "THE IMPOSSIBLE", "MASTERY", "THE PAYOFF"] : ["THE BEGINNING", "THE CONNECTION", "THE JOURNEY", "THE ARRIVAL"])[index]}</span><small>{bookends ? "REFERENCE" : `${shot?.durationSeconds ?? timeline.durations[index]} SEC`}</small></div>
               {shot && <p>{shot.purpose}</p>}{frame ? <span className={`review-badge ${isFrameApproved(frame) || frame.source === "extracted" ? "" : "review-warning"}`}>{frame.source === "extracted" ? `Movie frame · ${frame.extractedAtSeconds?.toFixed(2)}s` : frame.designerDecision?.action === "keep" ? "Kept by designer" : frame.designerDecision?.action === "regenerate" ? "Designer requested regeneration" : frame.continuity.verdict === "PASS" ? "Approved by AI" : "Needs revision"}</span> : job?.plan && <span className="review-badge review-warning">{movieFirst ? "Waiting for movie" : "Not generated"}</span>}
               {frame && frame.continuity.verdict !== "PASS" && frame.source !== "extracted" && <details className="frame-corrections"><summary>Review corrections</summary><ul>{frame.continuity.reasons.map((reason, at) => <li key={at}>{reason}</li>)}</ul></details>}
+              {frame && job?.heroEndpointSelectionAllowed && isFrameApproved(frame) && <HeroEndpointControls
+                frame={frame}
+                start={job.heroEndpoints?.startAssetId === frame.assetId}
+                end={job.heroEndpoints?.endAssetId === frame.assetId}
+                disabled={designerBusy || submitting || retrying}
+                onChoose={role => void selectHeroEndpoint(frame, role)} />}
               {frame && job && !movieFirst && <DesignerFrameControls key={`${job.id}-${frame.assetId}`} frame={frame} candidates={candidates}
                 disabled={designerBusy || submitting || retrying} reviewAllowed={!!job.designerReviewAllowed}
                 onSelect={assetId => setCandidateChoices(current => ({ ...current, [shotId]: assetId }))}

@@ -87,6 +87,23 @@ export function validateSavedPlan(job: MovieJob): void {
   }
 }
 
+export function validateHeroEndpoints(job: MovieJob, frames = job.frames): { startAssetId: string; endAssetId: string } {
+  const startAssetId = job.heroEndpoints?.startAssetId;
+  const endAssetId = job.heroEndpoints?.endAssetId;
+  if (!startAssetId || !endAssetId) {
+    throw new MovieError("HERO_ENDPOINT_SELECTION_REQUIRED",
+      "Choose one approved storyboard image as the Veo hero start and a different approved image as the hero end before continuing.", 409);
+  }
+  if (startAssetId === endAssetId) {
+    throw new MovieError("HERO_ENDPOINTS_IDENTICAL", "The Veo hero start and end must be different approved storyboard images.", 409);
+  }
+  const selected = [startAssetId, endAssetId].map(assetId => frames.find(frame => frame.assetId === assetId));
+  if (selected.some(frame => !frame || frame.source === "extracted" || !isFrameApproved(frame))) {
+    throw new MovieError("HERO_ENDPOINT_UNAVAILABLE", "A selected Veo hero endpoint is no longer an approved storyboard image.", 409);
+  }
+  return { startAssetId, endAssetId };
+}
+
 export async function validateApprovedFrame(
   frame: ReturnType<typeof selectStoryboardFrames>[number],
   context: Pick<GenerationContext, "jobId" | "ownerId" | "media" | "signal">,

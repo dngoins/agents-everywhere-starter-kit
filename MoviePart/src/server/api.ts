@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { z } from "zod";
-import { consentSchema, frameDecisionRequestSchema, jobRequestSchema, productionModeOf, retryRequestSchema, MovieError, type AssetRecord, type MovieJob } from "../domain";
+import { consentSchema, frameDecisionRequestSchema, heroEndpointSelectionRequestSchema, jobRequestSchema, productionModeOf, retryRequestSchema, MovieError, type AssetRecord, type MovieJob } from "../domain";
 import type { AssetView, ConfigView, JobView, Readiness } from "../domain/http";
 import type { MovieConfig } from "../domain/services";
 import { JobStore } from "../jobs/store";
@@ -13,7 +13,7 @@ import { loadConfig } from "./config";
 import { LocalMediaRepository } from "./media";
 import { boundedBody, uploadPhotos } from "./uploads";
 import { uploadProductReferences } from "./product-upload";
-import { retrySummary, validateApprovedFrame, validateRetryAssets } from "../jobs/retry";
+import { retrySummary, validateApprovedFrame, validateHeroEndpoints, validateRetryAssets } from "../jobs/retry";
 import { lifecycleKeySchema } from "../jobs/lifecycle";
 import { UploadBatchStore } from "./upload-batches";
 import { terminalVeoMessage } from "../domain/veo-failure";
@@ -62,6 +62,11 @@ export function jobView(job: MovieJob): JobView {
     retry,
     reviewRevision: job.designerDecisions?.length ?? 0,
     designerReviewAllowed: job.error?.code !== "JOB_CANCELLED" && !terminalVeo && !!job.plan && !job.result && (job.status === "FAILED" || !job.storyboardLocked && ["STORYBOARDING", "VALIDATING"].includes(job.status)),
+    ...(job.heroEndpoints ? { heroEndpoints: job.heroEndpoints } : {}),
+    heroEndpointRevision: job.heroEndpointSelections?.length ?? 0,
+    heroEndpointSelectionAllowed: job.request.video_provider === "google-veo" && job.request.enable_hero_video
+      && job.status === "FAILED" && job.error?.code === "HERO_ENDPOINT_SELECTION_REQUIRED"
+      && !job.hero && !job.heroAttempted,
   };
 }
 
@@ -134,6 +139,7 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
     if (summary.remainingShots && !(config.openaiKey && config.visionModel && config.imageModel)) {
       throw new MovieError("OPENAI_NOT_READY", "Configure OpenAI image generation and vision review before retrying unfinished shots.", 503);
     }
+    if (job.error?.code === "HERO_ENDPOINT_SELECTION_REQUIRED") validateHeroEndpoints(job);
     const [renderer, worker] = await Promise.all([rendererReady(), store.workerReadiness()]);
     if (!renderer.available) throw new MovieError("RENDERER_NOT_READY", renderer.message, 503);
     if (!worker.available) throw new MovieError("WORKER_NOT_READY", worker.message, 503);
@@ -285,6 +291,24 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
           jobId: current.id, ownerId, media, signal: request.signal,
         }, false);
       }, verifyRecovery);
+      return json({ job: jobView(job) });
+    }),
+    selectHeroEndpoint: guarded(async (request, id: string) => {
+      const { ownerId } = await auth.authenticate(request, { mutation: true });
+      if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+        throw new MovieError("INVALID_CONTENT_TYPE", "Send the hero endpoint selection as application/json.", 415);
+      }
+      const bytes = await boundedBody(request, 4096);
+      let parsed: unknown;
+      try { parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch {
+        throw new MovieError("INVALID_JSON", "The hero endpoint selection must be valid JSON.", 400);
+      }
+      const input = heroEndpointSelectionRequestSchema.parse(parsed);
+      const job = await store.selectHeroEndpoint(id, ownerId, input, async (current, frame) => {
+        await validateApprovedFrame(frame, {
+          jobId: current.id, ownerId, media, signal: request.signal,
+        });
+      });
       return json({ job: jobView(job) });
     }),
     deleteJob: guarded(async (request, id: string) => {

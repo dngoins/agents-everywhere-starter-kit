@@ -240,6 +240,16 @@ export const frameDecisionRequestSchema = z.object({
   resume: z.boolean().default(false),
 }).strict();
 export type FrameDecisionRequest = z.infer<typeof frameDecisionRequestSchema>;
+export const heroEndpointRoleSchema = z.enum(["start", "end"]);
+export type HeroEndpointRole = z.infer<typeof heroEndpointRoleSchema>;
+export const heroEndpointSelectionRequestSchema = z.object({
+  role: heroEndpointRoleSchema,
+  asset_id: z.uuid(),
+  idempotency_key: z.string().min(8).max(120),
+  expected_revision: z.number().int().nonnegative(),
+  expected_attempt: z.number().int().nonnegative(),
+}).strict();
+export type HeroEndpointSelectionRequest = z.infer<typeof heroEndpointSelectionRequestSchema>;
 export const storyboardFrameSchema = z.object({
   shotId: z.string(),
   assetId: z.uuid(),
@@ -381,6 +391,14 @@ export const jobSchema = z.object({
   designerDecisions: z.array(z.object({
     assetId: z.uuid(),
     request: frameDecisionRequestSchema,
+    at: z.iso.datetime(),
+  }).strict()).optional(),
+  heroEndpoints: z.object({
+    startAssetId: z.uuid().optional(),
+    endAssetId: z.uuid().optional(),
+  }).strict().optional(),
+  heroEndpointSelections: z.array(z.object({
+    request: heroEndpointSelectionRequestSchema,
     at: z.iso.datetime(),
   }).strict()).optional(),
   storyboardLocked: z.boolean().optional(),

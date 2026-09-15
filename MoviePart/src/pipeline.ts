@@ -8,7 +8,7 @@ import { getTemplate } from "./templates";
 import { createOpenAIServices } from "./providers/openai";
 import { createVeoService } from "./providers/google";
 import { createRenderer, validateRenderInput } from "./render";
-import { validateRetryAssets } from "./jobs/retry";
+import { validateHeroEndpoints, validateRetryAssets } from "./jobs/retry";
 import { extractStoryboard } from "./render/extract-storyboard";
 import { createOpenAIVideoService } from "./providers/openai/video";
 import { generateVideoSequence } from "./video/sequence";
@@ -115,6 +115,11 @@ export async function executeMovie(
   if (context.finalizeStoryboard) frames = await context.finalizeStoryboard();
   let hero = job.hero;
   validateRenderInput({ plan: renderPlan, frames, hero }, job.id);
+  const veoOperation = selectedVideoProvider === "google-veo" ? activeVideoOperations(job, "Google Veo").at(-1)?.id : undefined;
+  const heroPreviouslyAttempted = job.heroAttempted || !!veoOperation;
+  const heroEndpoints = selectedVideoProvider === "google-veo" && job.request.enable_hero_video && !hero && !heroPreviouslyAttempted
+    ? validateHeroEndpoints(job, frames)
+    : undefined;
   if (job.request.render_layout === "video-bookends" && getMovieFormat(job.request.movie_duration_seconds).clipCount > 1) {
     const video = services?.video ?? (selectedVideoProvider === "openai-sora" ? createOpenAIVideoService(config) : createVeoService(config));
     const videoClips = await (services?.sequence ?? generateVideoSequence)(job, renderPlan, character, frames, context, checkpoint, config, { video });
@@ -150,8 +155,6 @@ export async function executeMovie(
     if (result.mode !== "hybrid-video") throw new MovieError("ANIMATION_REQUIRED", "The final output did not include the required generated animation.");
     return result;
   }
-  const veoOperation = activeVideoOperations(job, "Google Veo").at(-1)?.id;
-  const heroPreviouslyAttempted = job.heroAttempted || !!veoOperation;
   if (selectedVideoProvider === "google-veo" && !hero && job.heroAttempted && !veoOperation) {
     throw new MovieError("VEO_SUBMISSION_UNCERTAIN", "A previous Veo submission was marked as started, but no operation ID was saved. Inspect that submission before authorizing a replacement; retry will not submit another paid video blindly.", 409);
   }
@@ -161,6 +164,7 @@ export async function executeMovie(
       : "Preparing the hero-video animation." });
     hero = await (services?.video ?? createVeoService(config)).generate({
       plan: renderPlan, character, product: job.product, frames, ...(veoOperation ? { operationId: veoOperation } : {}),
+      ...(heroEndpoints ? { heroEndpoints } : {}),
     }, { ...context, beforeVideoSubmission: () => checkpoint({ heroAttempted: true }) });
     await checkpoint({ hero });
   } else if (job.request.enable_hero_video && !hero && heroPreviouslyAttempted) {
