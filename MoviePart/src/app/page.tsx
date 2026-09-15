@@ -384,11 +384,6 @@ export default function MovieStudio() {
                 <option value="">Select a reference-backed car</option>
                 {products.map(item => <option key={item.id} value={item.id}>{item.name}{!item.ready ? " — unavailable" : ""}</option>)}
               </select>
-              <div className="vehicle-choices" role="group" aria-label="Choose a reference-backed car">
-                {products.map(item => <button type="button" key={item.id} aria-pressed={item.id === product} className={item.id === product ? "selected" : ""} onClick={() => { changed(); setProduct(item.id); }}>
-                  <strong>{item.name}</strong><span>{item.ready ? "Studio references included" : "Temporarily unavailable"}</span>
-                </button>)}
-              </div>
               <p className="field-help">Exterior and interior references are included with each catalog vehicle; no car-photo upload is required.</p>
               <label className="field-label interests-label">A FEW THINGS YOU LOVE <span>OPTIONAL</span></label>
               <div className="interests">{interests.map((value, index) => <input key={index} aria-label={`Personalization interest ${index + 1}`} value={value} maxLength={100} placeholder={["e.g. coastal drives", "e.g. architecture", "e.g. dogs"][index]} onChange={event => { changed(); setInterests(current => current.map((entry, at) => at === index ? event.target.value : entry)); }} />)}</div>
