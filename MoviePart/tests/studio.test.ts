@@ -109,7 +109,7 @@ test("continuity recovery offers bounded paid replacement before explicit image-
       attempt: 0, eligible: true, approvedShots: 4, remainingShots: 0,
       videoRecovery: {
         replacementAttempts: 0, maxReplacementAttempts: 2, rejectedSegment: 2,
-        veoSubmissionUncertain: false, replacementAvailable: true, soraFallbackAvailable: false, imageMotionAvailable: false,
+        veoSubmissionUncertain: false, replacementAvailable: true, imageMotionAvailable: false,
       },
     },
   };
@@ -119,8 +119,9 @@ test("continuity recovery offers bounded paid replacement before explicit image-
   assert.match(replacement, /Replace animation clip 3/);
   assert.match(replacement, /Replacement attempt 1 of 2/);
   assert.match(replacement, /another paid provider request/);
-  assert.match(replacement, /Sora 2 Pro becomes available only after both/);
-  assert.doesNotMatch(replacement, /Try Sora 2 Pro/);
+  assert.match(replacement, /explicitly authorize replacement 1 of 2/);
+  assert.doesNotMatch(replacement, /Sora 2 Pro/);
+  assert.doesNotMatch(replacement, /replacement limit is exhausted/);
   assert.doesNotMatch(replacement, /Resume animation and assembly/);
 
   const fallback = renderToStaticMarkup(createElement(MovieRecovery, {
@@ -129,7 +130,7 @@ test("continuity recovery offers bounded paid replacement before explicit image-
       retry: {
         ...base.retry!, videoRecovery: {
           replacementAttempts: 2, maxReplacementAttempts: 2, rejectedSegment: 2,
-          veoSubmissionUncertain: false, replacementAvailable: false, soraFallbackAvailable: true, imageMotionAvailable: true,
+          veoSubmissionUncertain: false, replacementAvailable: false, imageMotionAvailable: true,
         },
       },
     },
@@ -138,11 +139,11 @@ test("continuity recovery offers bounded paid replacement before explicit image-
   assert.match(fallback, /Both replacement attempts have been used/);
   assert.match(fallback, /Use image motion instead/);
   assert.match(fallback, /rather than generated footage/);
-  assert.match(fallback, /Try Sora 2 Pro/);
+  assert.doesNotMatch(fallback, /Sora 2 Pro/);
   assert.doesNotMatch(fallback, /Generate replacement clip/);
 });
 
-test("uncertain Veo submission offers only an explicit separate Sora sequence", () => {
+test("uncertain Veo submission offers only an explicit bounded Veo replacement", () => {
   const job: JobView = {
     id: "job", sessionId: "session", status: "FAILED", createdAt: "", updatedAt: "",
     events: [], warnings: [],
@@ -152,18 +153,17 @@ test("uncertain Veo submission offers only an explicit separate Sora sequence", 
       attempt: 0, eligible: true, approvedShots: 4, remainingShots: 0,
       videoRecovery: {
         replacementAttempts: 0, maxReplacementAttempts: 2, veoSubmissionUncertain: true,
-        replacementAvailable: true, soraFallbackAvailable: false, imageMotionAvailable: false,
+        replacementAvailable: true, imageMotionAvailable: false,
       },
     },
   };
   const html = renderToStaticMarkup(createElement(MovieRecovery, {
-    job, retrying: false, disabled: false, onRetry: () => {}, onUseSora: () => {},
+    job, retrying: false, disabled: false, onRetry: () => {}, onReplaceClip: () => {},
   }));
   assert.match(html, /returned no operation ID/);
-  assert.match(html, /automatically start bounded replacement attempt 1 of 2/);
+  assert.match(html, /explicitly authorize replacement attempt 1 of 2/);
   assert.match(html, /may also have been charged/);
-  assert.match(html, /Sora 2 Pro becomes available only after both/);
-  assert.doesNotMatch(html, /Try Sora 2 Pro/);
-  assert.doesNotMatch(html, /Generate replacement clip/);
+  assert.doesNotMatch(html, /Sora 2 Pro/);
+  assert.match(html, /Generate replacement clip/);
   assert.doesNotMatch(html, /Use image motion instead/);
 });

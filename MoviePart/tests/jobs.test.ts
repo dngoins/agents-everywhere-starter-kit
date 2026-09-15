@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getTimeline, MovieError, type JobRequest, type ProductReference, type RetryRequest } from "../src/domain";
+import { getTimeline, MovieError, type JobRequest, type ProductReference } from "../src/domain";
 import type { MovieConfig } from "../src/domain/services";
 import { JobStore } from "../src/jobs/store";
 import { MovieWorker } from "../src/jobs/worker";
@@ -141,7 +141,7 @@ test("worker persists all animation segment checkpoints and the requested output
   } finally { await worker.stop(); }
 });
 
-test("worker automatically queues a bounded replacement after an uncertain Veo submission", async t => {
+test("worker stops after an uncertain Veo submission without queuing a replacement", async t => {
   const { store, media, config } = await fixture(t);
   const input: JobRequest = {
     ...request(), enable_hero_video: true, video_provider: "google-veo",
@@ -149,11 +149,9 @@ test("worker automatically queues a bounded replacement after an uncertain Veo s
   };
   const queued = await store.create("owner", input, product());
   const timeline = getTimeline();
-  let automaticRequest: RetryRequest | null = null;
+  let retryCalls = 0;
   store.retryOwned = async (id, ownerId, recovery) => {
-    assert.equal(id, queued.id);
-    assert.equal(ownerId, "owner");
-    automaticRequest = recovery;
+    retryCalls++;
     return { job: await store.get(id), attempt: 1 };
   };
   const worker = new MovieWorker(config, { store, media, execute: async (job, _context, checkpoint) => {
@@ -184,11 +182,11 @@ test("worker automatically queues a bounded replacement after an uncertain Veo s
   await worker.start();
   try {
     assert.equal(await worker.runOnce(), true);
-    assert.deepEqual(automaticRequest, {
-      idempotency_key: `auto-veo-replacement-1-${queued.id}`,
-      expected_attempt: 0,
-      video_recovery_action: "replace-rejected-clip",
-    });
+    assert.equal(retryCalls, 0);
+    const failed = await store.get(queued.id);
+    assert.equal(failed.status, "FAILED");
+    assert.equal(failed.error?.code, "VEO_WORKFLOW_FAILED");
+    assert.equal(failed.retries, undefined);
   } finally {
     await worker.stop();
   }

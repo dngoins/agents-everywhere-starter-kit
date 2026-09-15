@@ -521,13 +521,9 @@ export default function MovieStudio() {
 
           {error && <div className="notice error" role="alert"><strong>Something needs your attention</strong><p>{error}</p>{jobId && !job && <button className="text-button" onClick={() => { setJobId(null); localStorage.removeItem("movie-magic:last-job"); }}>Stop watching this job</button>}</div>}
           {job?.error && <div className="notice error" role="alert"><strong>{stageLabels[job.error.stage]}</strong><p>{job.error.message}</p><small>Your saved plan and artifacts remain below. {job.retry?.videoRecovery
-            ? job.retry.videoRecovery.veoSubmissionUncertain
-              ? job.retry.videoRecovery.replacementAvailable
-                ? "The studio is automatically queuing a bounded Veo replacement."
-                : "Both Veo replacement attempts are used. The studio is automatically switching to Sora 2 Pro."
-              : job.retry.videoRecovery.replacementAvailable
-              ? "The studio is automatically queuing a bounded Veo replacement."
-              : "The replacement limit is reached. The studio is automatically switching to Sora 2 Pro."
+            ? job.retry.videoRecovery.replacementAvailable
+              ? "A bounded Veo replacement is available only if you explicitly authorize it below."
+              : "The Veo replacement limit is reached. No other video provider will be started automatically."
             : job.retry?.eligible ? "Retry this movie to keep approved work, or create a new take to change its brief." : "A new take requires an explicit submission."}</small></div>}
           {job && <MovieRecovery job={job} retrying={retrying} disabled={busy} onRetry={() => void retryMovie()}
             onReplaceClip={() => {
@@ -540,11 +536,6 @@ export default function MovieStudio() {
             onUseImageMotion={() => {
               if (window.confirm("Finish this movie with image motion instead? No additional Veo clip will be generated, and the result will be labeled image motion.")) {
                 void retryMovie(false, "use-image-motion");
-              }
-            }}
-            onUseSora={() => {
-              if (window.confirm("Use Sora 2 Pro for a new complete animation sequence? This may incur additional OpenAI charges. The approved storyboard is retained, but prior Veo clips are not mixed into the Sora sequence.")) {
-                void retryMovie(false, "use-sora");
               }
             }}
             {...(job.productionMode === "movie-first" && !job.retry?.videoRecovery ? { onMakeMovie: () => void retryMovie(true) } : {})} />}

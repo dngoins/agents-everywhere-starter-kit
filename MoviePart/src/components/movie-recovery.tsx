@@ -2,10 +2,9 @@ import React from "react";
 import type { JobView } from "../../integration/contracts";
 import { getMovieFormat } from "../domain";
 
-export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, onReplaceClip, onUseImageMotion, onUseSora }: {
+export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, onReplaceClip, onUseImageMotion }: {
   job: JobView; retrying: boolean; disabled: boolean; onRetry: () => void; onMakeMovie?: () => void;
   onReplaceClip?: () => void; onUseImageMotion?: () => void;
-  onUseSora?: () => void;
 }) {
   if (job.status !== "FAILED" || !job.retry?.eligible) return null;
   if (onMakeMovie) return <section className="movie-recovery" aria-label="Finish this movie">
@@ -21,12 +20,12 @@ export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, o
       : "Choose an explicit fallback"}</h3>
     <p>{recovery.veoSubmissionUncertain
       ? recovery.replacementAvailable
-        ? `Veo may have accepted the request, but it returned no operation ID. The studio will automatically start bounded replacement attempt ${recovery.replacementAttempts + 1} of ${recovery.maxReplacementAttempts}; the prior request may also have been charged.`
-        : "Veo may have accepted the request, but it returned no operation ID. Both automatic replacement attempts have been used; the studio will switch to Sora 2 Pro."
+        ? `Veo may have accepted the request, but it returned no operation ID. You may explicitly authorize replacement attempt ${recovery.replacementAttempts + 1} of ${recovery.maxReplacementAttempts}; the prior request may also have been charged.`
+        : "Veo may have accepted the request, but it returned no operation ID. Both replacement attempts have been used; no additional provider request will be made."
       : recovery.replacementAvailable
-        ? `The retained Veo clip did not pass continuity review. The studio will automatically generate replacement ${recovery.replacementAttempts + 1} of ${recovery.maxReplacementAttempts}.`
-        : "Both Veo replacements failed continuity review. The studio will automatically switch to Sora 2 Pro."}</p>
-    {recovery.replacementAvailable && !recovery.veoSubmissionUncertain ? <>
+        ? `The retained Veo clip did not pass continuity review. You may explicitly authorize replacement ${recovery.replacementAttempts + 1} of ${recovery.maxReplacementAttempts}.`
+        : "Both Veo replacements failed continuity review. No additional video-provider request will be made."}</p>
+    {recovery.replacementAvailable ? <>
       <p>Generate one new Veo replacement while keeping the approved storyboard and completed clips. This authorizes another paid provider request. {recovery.veoSubmissionUncertain ? "Because the prior submission returned no operation ID, it may also have been accepted and charged. " : ""}Replacement attempt {recovery.replacementAttempts + 1} of {recovery.maxReplacementAttempts}.</p>
       <button type="button" className="retry-button" disabled={disabled || retrying} onClick={onReplaceClip}>
         {retrying ? "Authorizing replacement…" : "Generate replacement clip"}
@@ -36,13 +35,7 @@ export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, o
       <button type="button" className="retry-button fallback-button" disabled={disabled || retrying} onClick={onUseImageMotion}>
         {retrying ? "Starting image motion…" : "Use image motion instead"}
       </button>
-    </> : null}
-    {recovery.soraFallbackAvailable ? <div className="provider-fallback">
-      <p><strong>Use another video provider.</strong> Sora 2 Pro can start again from the approved hero storyboard image and create its own complete clip sequence. It accepts product-only references: a safety check stops before submission if the image contains a person or face.</p>
-      <button type="button" className="retry-button fallback-button" disabled={disabled || retrying} onClick={onUseSora}>
-        {retrying ? "Authorizing Sora…" : "Try Sora 2 Pro"}
-      </button>
-    </div> : <p>Sora 2 Pro becomes available only after both explicit Veo replacement attempts have been used.</p>}
+    </> : <p>The replacement limit is exhausted. Create a new take to request more generated video.</p>}
   </section>;
   const { approvedShots, remainingShots } = job.retry;
   const requiresSora = job.plan?.videoProvider === "openai-sora";

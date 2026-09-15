@@ -6,7 +6,7 @@ import type { MediaRepository } from "../domain/services";
 import { getWardrobeLock, readImage } from "../references";
 import type { GenerationContext } from "../domain/services";
 import type { MovieRetrySummary } from "../../integration/contracts";
-import { activeVideoProvider, hasUncertainVideoSegment, savedVideoSegments } from "../domain/video-sequence-state";
+import { hasUncertainVideoSegment, savedVideoSegments } from "../domain/video-sequence-state";
 import { terminalVeoMessage } from "../domain/veo-failure";
 
 export function retrySummary(job: MovieJob): MovieRetrySummary {
@@ -28,8 +28,6 @@ export function retrySummary(job: MovieJob): MovieRetrySummary {
         ...(rejectedSegments[0] ? { rejectedSegment: rejectedSegments[0].index } : {}),
         veoSubmissionUncertain: canSwitchUncertainVeo,
         replacementAvailable: replacementAttempts < MAX_VIDEO_REPLACEMENTS,
-        soraFallbackAvailable: activeVideoProvider(job) === "google-veo"
-          && replacementAttempts >= MAX_VIDEO_REPLACEMENTS,
         imageMotionAvailable: rejectedSegments.length === 1 && replacementAttempts >= MAX_VIDEO_REPLACEMENTS,
       }
     : undefined;
@@ -42,22 +40,6 @@ export function retrySummary(job: MovieJob): MovieRetrySummary {
     approvedShots,
     remainingShots: (job.plan?.shots.length ?? 0) - (productionModeOf(job) === "movie-first" ? usable : approvedShots),
     ...(videoRecovery ? { videoRecovery } : {}),
-  };
-}
-
-export function automaticVideoRecovery(job: MovieJob): RetryRequest | null {
-  const retry = retrySummary(job);
-  if (!retry.videoRecovery) return null;
-  const action = retry.videoRecovery.replacementAvailable
-    ? "replace-rejected-clip"
-    : retry.videoRecovery.soraFallbackAvailable ? "use-sora" : null;
-  if (!action) return null;
-  return {
-    idempotency_key: action === "use-sora"
-      ? `auto-sora-fallback-${job.id}`
-      : `auto-veo-replacement-${retry.videoRecovery.replacementAttempts + 1}-${job.id}`,
-    expected_attempt: retry.attempt,
-    video_recovery_action: action,
   };
 }
 

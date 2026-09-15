@@ -335,7 +335,7 @@ export const retryRequestSchema = z.object({
   idempotency_key: z.string().min(8).max(120),
   expected_attempt: z.number().int().min(0).max(1_000_000),
   production_mode: z.literal("movie-first").optional(),
-  video_recovery_action: z.enum(["replace-rejected-clip", "use-sora", "use-image-motion"]).optional(),
+  video_recovery_action: z.enum(["replace-rejected-clip", "use-image-motion"]).optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.production_mode && value.video_recovery_action) {
     ctx.addIssue({ code: "custom", message: "Choose one recovery action." });
