@@ -23,6 +23,34 @@ export function assertVeoRecoverable(code: string | undefined): void {
   if (message) throw new MovieError("VEO_OPERATION_TERMINAL", message, 409);
 }
 
+export function veoSubmissionFailure(error: unknown): MovieError {
+  const status = typeof error === "object" && error !== null && "status" in error
+    ? Number(error.status)
+    : undefined;
+  if (status === 400) {
+    return new MovieError("VEO_SUBMISSION_INVALID",
+      "Google Veo rejected the request parameters. Confirm an enabled Veo 3.1 model and supported 8-second, 16:9, 720p first/last-frame inputs before submitting again.", 502);
+  }
+  if (status === 401 || status === 403) {
+    return new MovieError("VEO_SUBMISSION_ACCESS",
+      "Google Veo rejected the credential or project access. Confirm the Gemini API key, its API restrictions, paid-tier billing, and Veo model access before submitting again.", 502);
+  }
+  if (status === 404) {
+    return new MovieError("VEO_SUBMISSION_MODEL",
+      "The configured Google Veo model is not available to this API project. Confirm VEO_MODEL and model availability in Google AI Studio before submitting again.", 502);
+  }
+  if (status === 429) {
+    return new MovieError("VEO_SUBMISSION_QUOTA",
+      "Google Veo rejected the request because project quota, spend capacity, or billing availability was exhausted. Check the project's Veo rate limits and billing before submitting again.", 502);
+  }
+  if (status !== undefined && status >= 500) {
+    return new MovieError("VEO_SUBMISSION_UNAVAILABLE",
+      "Google Veo was temporarily unavailable while accepting the request. No operation ID was returned; inspect Google service status before authorizing another paid submission.", 502);
+  }
+  return new MovieError("VEO_WORKFLOW_FAILED",
+    "The Google Veo workflow could not finish submission. No operation ID was returned; run npm run veo:check and inspect Google AI Studio billing and rate limits before authorizing another paid submission.", 502);
+}
+
 export function veoOperationFailure(operation: {
   error?: unknown;
   response?: { raiMediaFilteredCount?: number; raiMediaFilteredReasons?: string[] };

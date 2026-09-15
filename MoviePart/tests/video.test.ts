@@ -114,8 +114,14 @@ test("Veo uses supported first/last byte inputs, exactly eight seconds, no SDK r
   assert.equal(submitted.config?.resolution, "720p");
   assert.equal(submitted.config?.httpOptions?.retryOptions?.attempts, 1);
   assert.equal(submitted.config?.referenceImages, undefined, "referenceImages cannot be combined with first/last frames");
-  assert.equal(submitted.image?.imageBytes, Buffer.from(f.entries.get(f.first.id)!).toString("base64"));
+  assert.equal(submitted.prompt, undefined);
+  assert.equal(submitted.image, undefined);
+  assert.equal(submitted.source?.image?.imageBytes, Buffer.from(f.entries.get(f.first.id)!).toString("base64"));
+  assert.match(submitted.source?.prompt ?? "", /continuous eight-second/);
   assert.equal(submitted.config?.lastFrame?.imageBytes, Buffer.from(f.entries.get(f.last.id)!).toString("base64"));
+  assert.equal(submitted.config?.generateAudio, true);
+  assert.equal(submitted.config?.enhancePrompt, true);
+  assert.match(submitted.config?.negativePrompt ?? "", /duplicate vehicles/);
   assert.deepEqual(f.sequence, ["generate", "record:Google Veo:models/veo/operations/offline", "poll", "download", "review"]);
   assert.equal(f.records.find(record => record.id === result.assetId)?.kind, "video");
   assert.deepEqual(f.warnings, []);
@@ -149,7 +155,7 @@ test("six-shot Veo selects shot_04 and its matching end frame, preserving explic
       assert.ok(!serialized.includes(customerBytes.toString("base64")));
       assert.ok(!serialized.includes("Private customer face sentinel"));
       assert.ok(!serialized.includes("Blue jacket"));
-      assert.match(request.prompt!, heroMode === "POV" ? /Never show any faces.*reflections/ : /generic protagonist seen only from behind/i);
+      assert.match(request.source?.prompt ?? "", heroMode === "POV" ? /Never show any faces.*reflections/ : /generic protagonist seen only from behind/i);
       return generate(request);
     };
     const result = await createVeoService(config, f.dependencies).generate(f.input, f.context);
@@ -267,6 +273,28 @@ test("Veo rejection, missing operation IDs, network errors and review rejection 
   }
 });
 
+test("Veo submission failures expose safe actionable categories without provider details", async () => {
+  const variants = [
+    { status: 400, code: "VEO_SUBMISSION_INVALID", text: /request parameters/ },
+    { status: 403, code: "VEO_SUBMISSION_ACCESS", text: /credential or project access/ },
+    { status: 404, code: "VEO_SUBMISSION_MODEL", text: /model is not available/ },
+    { status: 429, code: "VEO_SUBMISSION_QUOTA", text: /quota, spend capacity, or billing/ },
+    { status: 503, code: "VEO_SUBMISSION_UNAVAILABLE", text: /temporarily unavailable/ },
+  ] as const;
+  for (const variant of variants) {
+    const f = await fixture();
+    f.input.plan.videoProvider = "google-veo";
+    f.transport.generate = async () => { throw Object.assign(new Error("PRIVATE_PROMPT_SENTINEL"), { status: variant.status }); };
+    await assert.rejects(createVeoService(config, f.dependencies).generate(f.input, f.context), (error: unknown) => {
+      assert.ok(error instanceof MovieError);
+      assert.equal(error.code, variant.code);
+      assert.match(error.message, variant.text);
+      assert.doesNotMatch(error.message, /PRIVATE_PROMPT_SENTINEL/);
+      return true;
+    });
+  }
+});
+
 test("a rejected hero end frame never reaches Veo generation", async () => {
   const f = await fixture();
   f.dependencies.endFrame = async () => ({ ...f.input.frames[0], shotId: "shot_03_end", continuity: { verdict: "REJECT", reasons: ["Drift"], confidence: 0.9 } });
@@ -334,8 +362,8 @@ test("Veo continues from an owned video-derived frame without generating another
   const generate = f.transport.generate;
   f.transport.generate = async input => {
     assert.equal(input.config?.lastFrame, undefined);
-    assert.equal(input.image?.imageBytes, Buffer.from(f.entries.get(seed.id)!).toString("base64"));
-    assert.match(input.prompt!, /Continuation 2 of 3/);
+    assert.equal(input.source?.image?.imageBytes, Buffer.from(f.entries.get(seed.id)!).toString("base64"));
+    assert.match(input.source?.prompt ?? "", /Continuation 2 of 3/);
     return generate(input);
   };
   assert.ok(await createVeoService(config, f.dependencies).generate({ ...f.input, continuation: { assetId: seed.id, index: 1, count: 3 } }, f.context));

@@ -62,6 +62,8 @@ Upload receipts allocate IDs before any photo is saved, allowing partial/orphane
 
 The studio defaults to **reviewed storyboards with required Google Veo animation**. Astra handles vision/direction, Flare creates the reference stills, and Veo creates one to three eight-second moving clips after approval. Pan/zoom animation of a photograph does not satisfy the animation requirement.
 
+Before spending a Veo attempt, run `npm run veo:check`. This no-charge preflight verifies that the configured Gemini API key can see the selected Veo 3.1 model and that it advertises long-running video generation. It cannot verify paid-tier billing, remaining quota/capacity, or whether a particular prompt and reference pair will pass Google's safety review; confirm billing and project-specific Veo limits in Google AI Studio. Movie Magic submits the supported first/last-frame profile explicitly: one 8-second 16:9 720p video, approved 1280x720 endpoints, adult-person generation, native audio, and prompt enhancement.
+
 The default final cut is **15 seconds: a 3-second opening zoom, 8 seconds of real generated video, and a 4-second closing zoom**. The two bookend images are extracted from the approved video's exact first and last normalized frames. There are no still-only shots in the middle. The four/six-shot storyboard remains the approved reference plan, not a promise to insert every reference image into this cut. The studio sends `render_layout: "video-bookends"`; API callers omitting it retain the legacy storyboard layout.
 
 **Movie length is independent of the reference story arc.** Choose 13, 15, 18, 23, or 28 seconds:
