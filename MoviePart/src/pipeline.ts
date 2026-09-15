@@ -111,10 +111,10 @@ export async function executeMovie(
     await (services?.extract ?? extractStoryboard)(config, movieFirstPlan, movie, context);
     return movie;
   }
-  let frames = await storyboard.generate({ plan, character, product: job.product, existingFrames: job.frames }, context);
+  let frames = await storyboard.generate({ plan: renderPlan, character, product: job.product, existingFrames: job.frames }, context);
   if (context.finalizeStoryboard) frames = await context.finalizeStoryboard();
   let hero = job.hero;
-  validateRenderInput({ plan, frames, hero }, job.id);
+  validateRenderInput({ plan: renderPlan, frames, hero }, job.id);
   if (job.request.render_layout === "video-bookends" && getMovieFormat(job.request.movie_duration_seconds).clipCount > 1) {
     const video = services?.video ?? (selectedVideoProvider === "openai-sora" ? createOpenAIVideoService(config) : createVeoService(config));
     const videoClips = await (services?.sequence ?? generateVideoSequence)(job, renderPlan, character, frames, context, checkpoint, config, { video });

@@ -16,6 +16,7 @@ import { retrySummary, validateRetryAssets } from "../src/jobs/retry";
 import { LocalMediaRepository, normalizeImage } from "../src/server/media";
 import { createApiHandlers, jobView } from "../src/server/api";
 import { executeMovie, type PipelineServices } from "../src/pipeline";
+import { generateVideoSequence } from "../src/video/sequence";
 import { createOpenAIServices, type OpenAITransport } from "../src/providers/openai";
 import { createRenderer } from "../src/render";
 import { mainStoryboardFrames } from "../src/lib/storyboard-view";
@@ -565,4 +566,137 @@ test("continuity recovery replaces only the rejected Veo segment twice, then per
   const publicView = jobView({ ...fallback.job, status: "COMPLETED", result });
   assert.equal(publicView.result?.mode, "image-motion");
   assert.equal(publicView.renderLayout, "storyboard");
+});
+
+test("explicit Sora fallback keeps approved images, discards Veo clips, and generates a complete Sora sequence", async t => {
+  const f = await fixture(t, 6);
+  const veoAssets = await Promise.all([0, 1].map(index => f.media.saveAsset({
+    ownerId, jobId: f.job.id, kind: "video", mime: "video/mp4", bytes: new Uint8Array([index + 1]),
+  })));
+  await f.store.update(f.job.id, job => {
+    job.request.enable_hero_video = true;
+    job.request.video_provider = "google-veo";
+    job.request.render_layout = "video-bookends";
+    job.request.movie_duration_seconds = 28;
+    job.plan!.videoProvider = "google-veo";
+    job.heroAttempted = true;
+    job.hero = {
+      assetId: veoAssets[0].id, shotId: f.plan.heroShotId,
+      provider: "Google Veo", model: "veo-3.1-generate-preview", operationId: "veo-0",
+    };
+    job.operations = [0, 1, 2].map(index => ({ provider: "Google Veo", id: `veo-${index}` }));
+    job.videoSegments = [
+      { index: 0, submitted: true, operationId: "veo-0", clip: job.hero },
+      {
+        index: 1, submitted: true, operationId: "veo-1", startFrameAssetId: randomUUID(),
+        clip: {
+          assetId: veoAssets[1].id, shotId: f.plan.heroShotId,
+          provider: "Google Veo", model: "veo-3.1-generate-preview", operationId: "veo-1",
+        },
+      },
+      { index: 2, submitted: true, operationId: "veo-2", startFrameAssetId: randomUUID() },
+    ];
+    job.error = { code: "VEO_CONTINUITY_REJECTED", message: "Retained rejection.", stage: "GENERATING_HERO" };
+  });
+
+  const switchRequest: RetryRequest = {
+    ...action(), video_recovery_action: "use-sora",
+  };
+  const switched = await f.store.retryOwned(f.job.id, ownerId, switchRequest, async () => {});
+  assert.equal((await f.store.retryOwned(f.job.id, ownerId, switchRequest, async () => {})).attempt, switched.attempt);
+  assert.equal(switched.job.request.video_provider, "google-veo", "the accepted request remains immutable");
+  assert.equal(switched.job.videoRecoveries?.at(-1)?.action, "use-sora");
+  assert.equal(switched.job.hero, null);
+  assert.equal(switched.job.heroAttempted, false);
+  assert.deepEqual(switched.job.videoSegments, [0, 1, 2].map(index => ({ index, submitted: false })));
+  assert.deepEqual(switched.job.operations, [0, 1, 2].map(index => ({ provider: "Google Veo", id: `veo-${index}` })));
+
+  const submissions: { provider: string | undefined; continuation?: number; frameAssetId: string }[] = [];
+  const clips = new Map<string, Uint8Array>();
+  const context: GenerationContext = {
+    jobId: f.job.id, ownerId, media: {
+      getAsset: id => f.media.getAsset(id),
+      readAsset: id => f.media.readAsset(id),
+      assetPath: id => f.media.assetPath(id),
+      saveAsset: async input => {
+        const saved = await f.media.saveAsset(input);
+        if (input.kind === "video") clips.set(saved.id, input.bytes);
+        return saved;
+      },
+    }, signal: new AbortController().signal,
+    report: async () => {}, warn: async () => {},
+    recordOperation: async (provider, id) => {
+      switched.job.operations.push({ provider, id });
+    },
+    saveFrame: async () => {}, saveSceneFrame: async () => {},
+  };
+  const result = await executeMovie(switched.job, context, async patch => {
+    Object.assign(switched.job, structuredClone(patch));
+  }, f.config, {
+    references: { extract: async () => assert.fail("Sora fallback must reuse the saved character") },
+    director: { plan: async () => assert.fail("Sora fallback must reuse the saved plan") },
+    storyboard: {
+      generate: async input => {
+        assert.equal(input.plan.videoProvider, "openai-sora");
+        assert.deepEqual(input.existingFrames, f.frames);
+        return f.frames;
+      },
+    },
+    video: {
+      generate: async (input, ctx) => {
+        assert.equal(input.plan.videoProvider, "openai-sora");
+        assert.equal(input.operationId, undefined);
+        const index = input.continuation?.index ?? 0;
+        submissions.push({
+          provider: input.plan.videoProvider, continuation: input.continuation?.index,
+          frameAssetId: input.continuation?.assetId ?? input.frames.find(frame => frame.shotId === input.plan.heroShotId)!.assetId,
+        });
+        await ctx.beforeVideoSubmission?.();
+        await ctx.recordOperation("OpenAI Sora", `video_fallback_${index}`);
+        const saved = await ctx.media.saveAsset({
+          ownerId, jobId: f.job.id, kind: "video", mime: "video/mp4", bytes: new Uint8Array([10 + index]),
+        });
+        return {
+          assetId: saved.id, shotId: f.plan.heroShotId,
+          provider: "OpenAI Sora", model: "sora-2-pro", operationId: `video_fallback_${index}`,
+        };
+      },
+    },
+    sequence: async (job, plan, character, frames, ctx, checkpoint, config, dependencies) =>
+      generateVideoSequence(job, plan, character, frames, ctx, checkpoint, config, {
+        ...dependencies,
+        continuation: async (_config, clip, continuationContext) => {
+          assert.equal(clip.provider, "OpenAI Sora");
+          return (await continuationContext.media.saveAsset({
+            ownerId, jobId: f.job.id, kind: "storyboard", mime: "image/png", bytes: f.png,
+          })).id;
+        },
+        probe: async () => ({
+          videoStreamCount: 1, audioStreamCount: 0, durationSeconds: 8, formatName: "mov,mp4", audio: null,
+          video: { codec: "h264", width: 1280, height: 720, durationSeconds: 8, frameCount: 192, frameRate: 24, pixelFormat: "yuv420p", sampleAspectRatio: "1:1" },
+        }),
+      }),
+    renderer: {
+      ready: async () => ({ available: true, message: "Offline renderer" }),
+      render: async input => {
+        assert.equal(input.plan.videoProvider, "openai-sora");
+        assert.ok(input.videoClips?.every(clip => clip.provider === "OpenAI Sora"));
+        assert.ok(input.videoClips?.every(clip => !veoAssets.some(asset => asset.id === clip.assetId)));
+        const output = await f.media.saveAsset({
+          ownerId, jobId: f.job.id, kind: "video", mime: "video/mp4", bytes: new Uint8Array([99]),
+        });
+        return {
+          assetId: output.id, mode: "hybrid-video", durationSeconds: 28,
+          hasAudio: false, renderLayout: "video-bookends",
+        };
+      },
+    },
+  });
+  assert.equal(result.mode, "hybrid-video");
+  assert.equal(submissions.length, 3);
+  assert.equal(submissions[0].frameAssetId, f.frames.find(frame => frame.shotId === f.plan.heroShotId)!.assetId);
+  assert.deepEqual(submissions.map(item => item.continuation), [undefined, 1, 2]);
+  assert.equal(switched.job.videoSegments?.every(segment => segment.clip?.provider === "OpenAI Sora"), true);
+  assert.equal(switched.job.operations.filter(operation => operation.provider === "Google Veo").length, 3);
+  assert.equal(switched.job.operations.filter(operation => operation.provider === "OpenAI Sora").length, 3);
 });

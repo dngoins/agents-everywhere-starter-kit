@@ -119,6 +119,9 @@ test("continuity recovery offers bounded paid replacement before explicit image-
   assert.match(replacement, /Replace animation clip 3/);
   assert.match(replacement, /Replacement attempt 1 of 2/);
   assert.match(replacement, /another paid provider request/);
+  assert.match(replacement, /Try Sora 2 Pro/);
+  assert.match(replacement, /approved hero storyboard image/);
+  assert.match(replacement, /person or face/);
   assert.doesNotMatch(replacement, /Resume animation and assembly/);
 
   const fallback = renderToStaticMarkup(createElement(MovieRecovery, {
@@ -136,5 +139,6 @@ test("continuity recovery offers bounded paid replacement before explicit image-
   assert.match(fallback, /Both replacement attempts have been used/);
   assert.match(fallback, /Use image motion instead/);
   assert.match(fallback, /rather than generated footage/);
+  assert.match(fallback, /Try Sora 2 Pro/);
   assert.doesNotMatch(fallback, /Generate replacement clip/);
 });
