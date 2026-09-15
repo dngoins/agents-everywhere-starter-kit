@@ -37,6 +37,9 @@ UI defaults to port **3200**, API to **3101**, and legacy media to **3201**.
 `--ui-port 3202`, `--api-port`, and `--media-port` are validated independent
 overrides. Occupied ports cause a failure; the launcher never stops someone
 else's process. All services bind to `127.0.0.1`.
+Next's cold compilation has a bounded five-minute startup allowance, adjustable
+with `--startup-timeout-ms` from 30000 to 600000. This is only a startup deadline,
+not a longer API/provider request timeout or a substitute for readiness.
 
 | Flag | Effect | Does not enable |
 |---|---|---|
@@ -68,7 +71,7 @@ existing `.env`. Launcher mode selection uses flags, not key presence.
 | Process | Permitted private credentials |
 |---|---|
 | FinalProject | Voice OpenAI key only with `--live-voice`; Google OAuth credentials only with `--google-calendar`; generated operator bootstrap key; studio machine token only with `--live-studio` |
-| MoviePart web + studio worker | MoviePart OpenAI/Google video keys and generated `MOVIE_API_TOKEN`, only with `--live-studio` |
+| MoviePart web + studio worker | MoviePart OpenAI/Google video keys and persistent private `MOVIE_API_TOKEN`, only with `--live-studio` |
 | Legacy media service | MoviePart OpenAI image key and generated media-service token, only with `--live-media` |
 | iPad browser | One authoritative session capability held in memory after one-time code exchange |
 | Local bridge browser | Redeemed short-lived operator/bridge role credentials held in memory, not the bootstrap key |
@@ -87,6 +90,18 @@ bootstrap and retains `.runtime/device-token` for the legacy developer harness.
 Neither file is an iPad pairing code. Restrict `.runtime` and private provider
 state to the operator's Windows account using NTFS ACLs; POSIX `0600` is not an
 NTFS security boundary.
+
+Studio mode atomically creates or reads `.runtime/studio-api-token`. **Keep this
+identity across normal restarts:** MoviePart's durable job/photo owner depends
+on it, so rotating it would strand cleanup under another owner. Explicit
+`MOVIE_API_TOKEN` values in FinalProject/MoviePart must agree with each other and
+with the stored identity; disagreement, a corrupt file, or a non-file entry
+fails closed rather than replacing it. The file is private and is never logged.
+Complete verified cleanup under the existing identity before deliberate
+rotation, and retain the same private studio origin while cleanup is pending.
+Receipt ownership binds the credential, origin and session scope before any
+recovery request. Do not delete credentials or pending cleanup receipts merely to
+silence a startup error; legacy unbound receipts require explicit recovery.
 
 Voice preserves `VOICE_MODEL` (default `gpt-live-1`) and the regular/reasoning
 model (default `gpt-5.6-luna`), rather than replacing speech with browser TTS.
@@ -207,6 +222,10 @@ and status are retained. Redirects are never followed; network errors and
 upstream error bodies are sanitized. Private responses are `no-store`. A body
 failure after response headers interrupts the stream; it cannot retroactively
 change its HTTP status and must not be interpreted as successful playback.
+Only an exact upstream HTTP 409 `REVISION_CONFLICT` code is preserved, using
+bounded error parsing and an authored safe message. Other conflicts and
+unreadable errors remain unclassified failures, not proof that retrying with a
+new event ID is safe.
 
 ## Local Windows Chrome bridge
 
@@ -232,6 +251,4 @@ npm --prefix FinalProject test -- test\kiosk-config.test.ts
 Set-Location MoviePart
 node --import tsx --test tests\showroom-gateway.test.ts tests\launcher-isolation.test.ts
 node node_modules\typescript\bin\tsc -p tsconfig.showroom-gateway.json
-# After npm run build; uses ephemeral loopback servers and a fake upstream:
-node --test integration-tests\showroom-gateway.test.mjs
 ```

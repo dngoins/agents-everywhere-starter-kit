@@ -7,13 +7,17 @@ const { integrationEnvironments, launchOptions, studioReady, apiReady } = await 
 test("kiosk launcher defaults to distinct loopback ports and validates overrides", () => {
   assert.deepEqual(launchOptions([]), {
     liveMedia: false, liveStudio: false, liveVoice: false, googleCalendar: false, windowsBridge: false,
-    apiPort: 3101, uiPort: 3200, mediaPort: 3201, publicOrigin: undefined,
+    apiPort: 3101, uiPort: 3200, mediaPort: 3201, publicOrigin: undefined, startupTimeoutMs: 300_000,
   });
   assert.equal(launchOptions(["--ui-port", "3202"]).uiPort, 3202);
   assert.throws(() => launchOptions(["--ui-port", "3101"]), /distinct/);
   assert.throws(() => launchOptions(["--ui-port", "0"]), /port/);
   assert.throws(() => launchOptions(["--unknown"]), /Unsupported/);
   assert.throws(() => launchOptions(["--live-media", "--live-studio"]), /not both/);
+  assert.equal(launchOptions(["--startup-timeout-ms", "600000"]).startupTimeoutMs, 600000);
+  for (const timeout of ["0", "29999", "600001", "Infinity", "wrong"]) {
+    assert.throws(() => launchOptions(["--startup-timeout-ms", timeout]), /startup timeout/);
+  }
   for (const origin of ["http://192.168.1.5:3202", "https://user:pass@kiosk.test", "https://kiosk.test/path", "*"]) {
     assert.throws(() => launchOptions(["--public-origin", origin]), /trusted HTTPS/);
   }
