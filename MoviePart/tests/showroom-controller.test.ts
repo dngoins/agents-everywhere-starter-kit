@@ -142,6 +142,28 @@ test("correction, wrong fingerprint, expiry and partial utterance cannot approve
   assert.equal(f.actions.filter(action => action.type === "action_confirmed").length, 0);
 });
 
+test("spoken answers use the same authoritative proposal and explicit confirmation path as touch", async t => {
+  const f = fixture(); t.after(() => f.controller.dispose());
+  await f.controller.pair("ABCD1234");
+  const snapshot = f.controller.getState().snapshot!;
+  await f.controller.voiceAction({
+    schemaVersion: 1, eventId: randomUUID(), expectedRevision: snapshot.revision, type: "answer_proposed",
+    payload: { field: "visitor", value: { displayName: "Taylor" } },
+  });
+  const pending = f.controller.pending()!;
+  await f.controller.voiceAction({
+    schemaVersion: 1, eventId: randomUUID(), expectedRevision: pending.expectedRevision, type: "action_confirmed",
+    payload: {
+      pendingActionId: pending.pendingActionId, confirmationFingerprint: pending.confirmationFingerprint,
+      decision: "approve", channel: "voice",
+    },
+  });
+  assert.deepEqual(f.actions.slice(-2).map(action => action.type), ["answer_proposed", "action_confirmed"]);
+  const confirmation = f.actions.at(-1);
+  assert.equal(confirmation?.type, "action_confirmed");
+  if (confirmation?.type === "action_confirmed") assert.equal(confirmation.payload.channel, "voice");
+});
+
 test("one to four owned uploads bind all views and primary; exact-byte retry reuses event ID", async t => {
   const f = fixture(); t.after(() => f.controller.dispose());
   f.setSnapshot({ pendingAction: null, captureSet: null });

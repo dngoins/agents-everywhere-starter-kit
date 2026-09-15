@@ -50,7 +50,7 @@ test("robot greeting invites pairing and does not grant consent or claim to list
   assert.equal(current.snapshot.consent, undefined);
 });
 
-test("robot guides consent, preferences, brief, reference and deliberate media request", () => {
+test("robot defers the legacy brief until a permitted reference is selected", () => {
   const current = state();
   current.connection = "active";
   current.snapshot = snapshot();
@@ -61,10 +61,10 @@ test("robot guides consent, preferences, brief, reference and deliberate media r
   assert.equal(robotPrompt(current).id, "preferences");
   current.snapshot.customer = { customerId: "demo-alex", displayName: "Alex", method: "manual", synthetic: true };
   current.snapshot.context = { revision: 2, source: "conversation", preferences: ["Beach road trips"] };
-  assert.equal(robotPrompt(current).action, "brief");
-  current.snapshot.brief = brief;
   assert.equal(robotPrompt(current).action, "photo");
   current.uploadedId = "photo";
+  assert.equal(robotPrompt(current).action, "brief");
+  current.snapshot.brief = brief;
   assert.equal(robotPrompt(current).action, "create");
   current.snapshot.jobs = [job("running")];
   assert.equal(robotPrompt(current).expression, "thinking");

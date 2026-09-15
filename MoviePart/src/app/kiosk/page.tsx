@@ -95,8 +95,8 @@ export default function KioskPage() {
           </label>
           <div className={styles.actions}>
             <button className={styles.primary} disabled={!voiceDisclosure || runtime.voiceConnecting}
-              onClick={() => run(runtime.startVoice())}>{runtime.voiceConnecting ? "Connecting live voice..." : "Start live conversation"}</button>
-            <button onClick={() => setTouch(true)}>Continue by touch</button>
+              onClick={() => run(runtime.startVoice())}>{runtime.voiceConnecting ? "Connecting to the robot..." : "Talk with the robot"}</button>
+            <button onClick={() => setTouch(true)}>Answer by touch instead</button>
           </div>
         </>
       )}
@@ -147,8 +147,8 @@ export default function KioskPage() {
       {state.error && <p className={styles.error} role="alert">{state.error}</p>}
       {state.playbackError && <p className={styles.error} role="alert">{state.playbackError}</p>}
       <div className={styles.secondaryActions}>
-        {active && touch && !runtime.voiceReady && <button className={styles.quiet} onClick={() => setTouch(false)}>Switch to live voice</button>}
-        {active && <button className={styles.quiet} onClick={() => { setTouch(true); openDrawer("answers"); }}>Touch controls & corrections</button>}
+        {active && touch && !runtime.voiceReady && <button className={styles.quiet} onClick={() => setTouch(false)}>Talk with the robot</button>}
+        {active && <button className={styles.quiet} onClick={() => { setTouch(true); openDrawer("answers"); }}>Answer or correct by touch</button>}
         {active && <button className={styles.quiet} onClick={() => openDrawer("photos")}>Photos & camera</button>}
       </div>
     </>
