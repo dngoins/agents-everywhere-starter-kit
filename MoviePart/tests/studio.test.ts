@@ -33,13 +33,27 @@ test("the Toyota and Lexus lineup remains selectable before the server configura
   assert.ok(selectableProducts(null).every(product => !product.ready));
 });
 
+test("the selector never exposes products outside the downloaded Toyota and Lexus list", () => {
+  const products = selectableProducts({
+    products: [
+      { id: "toyota-camry", name: "Toyota Camry", ready: true },
+      { id: "operator-custom", name: "Operator custom", ready: true },
+    ],
+    templates: [],
+    providers: { openai: { available: true, message: "Ready" }, veo: { available: true, message: "Ready" } },
+    worker: { available: true, message: "Ready" }, renderer: { available: true, message: "Ready" },
+  });
+  assert.equal(products.some(product => product.id === "operator-custom"), false);
+  assert.deepEqual(products.map(product => product.id), vehicleChoices.map(product => product.id));
+});
+
 test("creation explains every missing prerequisite instead of silently disabling the button", () => {
   const missing = creationBlockers({
     config: null, productId: "toyota-camry", needsPhotos: true,
     photoCount: 0, generationConsent: false, personalizationConsent: false,
   });
   assert.equal(missing.length, 5);
-  assert.match(missing.join(" "), /exterior and interior/);
+  assert.match(missing.join(" "), /temporarily unavailable/);
   assert.match(missing.join(" "), /Reconnect/);
   assert.deepEqual(creationBlockers({
     config: {

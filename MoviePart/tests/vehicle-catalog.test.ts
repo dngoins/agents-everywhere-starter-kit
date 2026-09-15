@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cp, mkdtemp, mkdir, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,7 @@ import { vehicleCatalogFolder, vehicleChoices } from "../src/catalog/vehicles";
 async function fixture(t: test.TestContext) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "movie-vehicle-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  return new ProductCatalog(directory, new LocalMediaRepository(directory));
+  return new ProductCatalog(directory, new LocalMediaRepository(directory), null);
 }
 async function image(color: string) {
   return sharp({ create: { width: 32, height: 24, channels: 3, background: color } }).png().toBuffer();
@@ -40,13 +40,9 @@ test("Toyota and Lexus vehicles are selectable but not ready without reference p
 test("every checked-in Toyota and Lexus reference folder is complete and catalog-valid", async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "movie-bundled-vehicles-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  await mkdir(path.join(directory, "catalog"), { recursive: true });
   const source = fileURLToPath(new URL("../vehicle-catalog", import.meta.url));
   const folders = (await readdir(source, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name);
   assert.deepEqual(folders.sort(), vehicleChoices.map(vehicleCatalogFolder).sort());
-  for (const vehicle of vehicleChoices) {
-    await cp(path.join(source, vehicleCatalogFolder(vehicle)), path.join(directory, "catalog", vehicle.id), { recursive: true });
-  }
   const catalog = new ProductCatalog(directory, new LocalMediaRepository(directory));
   assert.ok((await catalog.list()).every(product => product.ready));
   for (const vehicle of vehicleChoices) {

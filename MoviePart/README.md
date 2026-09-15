@@ -272,9 +272,9 @@ Use three or four photos of a consenting teammate; one to four are accepted. Sel
 
 Only JPEG, PNG, and WebP are accepted, bounded to 10 MiB per file, 40 MiB per complete upload, and 25 megapixels per decoded image. Image orientation is normalized and unnecessary metadata is removed.
 
-Place the authorized car reference pack in the private local catalog described in [demo-data](demo-data/README.md). The app deliberately does not ship an invented car, unlicensed reference photos, or a fake successful generation. A curated car's appearance and approved claims must match its real references.
+The checked-in Toyota/Lexus reference library described in [demo-data](demo-data/README.md) makes every listed vehicle selectable without uploading car photographs. The app does not invent a car or report fake generation success. A private operator catalog may override a bundled model when an exact authorized trim is required.
 
-The studio offers the current Toyota/Lexus showroom catalog, including Tacoma, Camry, bZ, Tundra, Land Cruiser, Lexus LC, ES, RZ and the broader supported lineups. Select a vehicle, upload its permitted exterior and interior photos, and record the actual color/source. Each remains marked **add references** until its own pack is ready. This does not change Dwight's synthetic `demo-car-v1` contract.
+The studio offers the Toyota/Lexus showroom catalog, including Tacoma, Camry, bZ, Tundra, Land Cruiser, Lexus LC, ES, RZ and the broader supported lineups. **02 Choose your car** selects the corresponding bundled exterior/interior reference pack immediately. This does not change Dwight's synthetic `demo-car-v1` contract.
 
 ### Renderer, native audio, and optional music
 
@@ -317,7 +317,7 @@ The complete portable contract is [integration/contracts.ts](integration/contrac
 |---|---|
 | `GET /api/movie-config` | Templates, product IDs, local readiness; creates the demo browser session |
 | `POST /api/movie-assets` | Consent-gated private photo upload |
-| `POST /api/movie-products/{productId}/references` | Operator-confirmed exterior/interior references for the selected Toyota or Lexus |
+| `POST /api/movie-products/{productId}/references` | Optional operator override for an exact authorized Toyota or Lexus trim; not required for bundled choices |
 | `POST /api/movie-jobs` | Idempotent asynchronous submission; returns 202 |
 | `GET /api/movie-jobs/{jobId}` | Current status, artifacts, progress, warnings, and errors |
 | `POST /api/movie-jobs/{jobId}/retry` | Explicit, idempotent recovery using the saved plan and approved shots |

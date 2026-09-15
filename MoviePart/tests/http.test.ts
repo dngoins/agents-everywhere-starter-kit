@@ -70,14 +70,14 @@ const jobRequest = (cookie: string, value: unknown) => req("/api/movie-jobs", {
   method: "POST", cookie, body: JSON.stringify(value), headers: { "content-type": "application/json" },
 });
 
-test("config DTO is direct, private, establishes a session, and reports missing catalog honestly", async t => {
+test("config DTO exposes the downloaded Toyota and Lexus catalog as ready", async t => {
   const { handlers } = await fixture(t, false);
   const response = await handlers.config(req("/api/movie-config"));
   assert.equal(response.status, 200);
   const data = await response.json();
   assert.deepEqual(Object.keys(data).sort(), ["products", "providers", "renderer", "templates", "worker"]);
   assert.equal(data.templates.length, 4);
-  assert.deepEqual(data.products, vehicleChoices.map(({ id, name }) => ({ id, name, ready: false })));
+  assert.deepEqual(data.products, vehicleChoices.map(({ id, name }) => ({ id, name, ready: true })));
   assert.equal(data.worker.available, false);
   assert.equal(data.renderer.message, "Explicit test renderer.");
   assert.match(response.headers.get("cache-control")!, /no-store/);

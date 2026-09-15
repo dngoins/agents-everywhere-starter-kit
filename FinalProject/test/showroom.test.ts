@@ -176,6 +176,10 @@ test('calendar confirmation binds full 60-minute readback and survives photograp
 test('fixture catalog never silently aliases demo-car and unknown enrichment is rejected', async t => {
   const f = await setup(t);
   await f.action('consent_recorded', consent); await f.confirm();
+  await f.action('answer_proposed', { field: 'selection', value: selection });
+  assert.match(f.snapshot().pendingAction!.readback, /Toyota Camry/);
+  await f.confirm();
+  assert.equal(f.snapshot().selection?.productId, 'toyota-camry');
   await assert.rejects(f.action('answer_proposed', { field: 'selection', value: { ...selection, productId: 'demo-car' } }), /catalog product/);
   await assert.rejects(f.action('answer_proposed', { field: 'context', value: {
     signals: [{ value: 'inferred preference', source: 'approved-research', visualUseAllowed: true, confidence: 0.9 }],

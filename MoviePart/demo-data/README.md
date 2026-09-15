@@ -8,9 +8,9 @@ Customer photos can stay in ignored `demo-data\customer-01` or another private f
 
 The creator studio offers Toyota and Lexus vehicles only. The supported lineup includes Toyota 4Runner, bZ, Camry, Corolla, Corolla Cross, Crown, Crown Signia, GR86, GR Corolla, GR Supra, Highlander, Land Cruiser, Mirai, Prius, RAV4, Sequoia, Sienna, Tacoma and Tundra, plus Lexus ES, GX, IS, LC, LS, LX, NX, RC, RX, RZ and UX.
 
-Select a car and use **Add car references** to upload exterior and interior photographs of the same actual model, generation and trim. Enter the actual colors, source and permission. A choice is not marked ready until its own coherent reference pack exists under `.movie-data\catalog\<product-id>`.
+Select a car directly in **02 Choose your car**. Each supported choice uses its checked-in, coherent exterior/interior reference pair, so customers and operators do not upload car photographs.
 
-The checked-in `vehicle-catalog` directory contains only images whose source metadata records an explicit reusable license. For advertising or generative use, operators must still confirm that the recorded license and any attribution/share-alike requirements fit the intended production. Official press-gallery access or public web visibility alone is not permission.
+The checked-in `vehicle-catalog` directory contains only images whose source metadata records an explicit reusable license. For advertising or generative use, operators must still confirm that the recorded license and any attribution/share-alike requirements fit the intended production. Official press-gallery access or public web visibility alone is not permission. A private operator pack under `.movie-data\catalog\<product-id>` may override a bundled pack for an exact trim or campaign.
 
 For operator-managed catalog files instead of the UI:
 
