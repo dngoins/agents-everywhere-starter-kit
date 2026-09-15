@@ -4,6 +4,7 @@ import { LocalMediaRepository } from "../server/media";
 import { JobStore, terminal, WORKER_HEARTBEAT_MS } from "./store";
 import { selectStoryboardFrames } from "../domain/storyboard-state";
 import { validateRenderInput } from "../render";
+import { automaticVideoRecovery, validateRetryAssets } from "./retry";
 
 export type MovieExecutor = (job: MovieJob, context: GenerationContext, checkpoint: MovieCheckpoint, config: MovieConfig) => Promise<RenderResult>;
 
@@ -153,6 +154,7 @@ export class MovieWorker {
         return selectStoryboardFrames(locked.frames, locked.plan!.shots.map(shot => shot.id));
       },
     };
+    let automaticRecovery: ReturnType<typeof automaticVideoRecovery> = null;
     try {
       await checkCancellation();
       signal.throwIfAborted();
@@ -166,7 +168,8 @@ export class MovieWorker {
         current.events.push({ at: new Date().toISOString(), stage: "COMPLETED", message: "Movie ready.", provider: null, shotId: null });
       });
     } catch (error) {
-      if (!await cancellationRequested()) await this.store.update(job.id, current => {
+      if (!await cancellationRequested()) {
+        const failed = await this.store.update(job.id, current => {
         const stage = current.status;
         const aborted = this.controller.signal.aborted;
         current.error = {
@@ -180,9 +183,9 @@ export class MovieWorker {
         };
         current.status = "FAILED";
         current.events.push({ at: new Date().toISOString(), stage: "FAILED", message: current.error.message, provider: null, shotId: null });
-      }).catch(updateError => {
-        if (!(updateError instanceof MovieError && updateError.code === "JOB_CANCELLED")) throw updateError;
-      });
+        });
+        automaticRecovery = automaticVideoRecovery(failed);
+      }
     } finally {
       clearInterval(cancellationTimer);
       cancellation.abort(new MovieError("JOB_SETTLED", "Movie execution has ended.", 410));
@@ -191,6 +194,22 @@ export class MovieWorker {
       await this.store.finishClaim(job.id, token);
       if (await cancellationRequested()) {
         await this.store.cancelOwnedRequest(job.ownerId, job.request.idempotency_key, this.media);
+      } else if (automaticRecovery) {
+        try {
+          await this.store.retryOwned(job.id, job.ownerId, automaticRecovery,
+            current => validateRetryAssets(current, this.media));
+        } catch (recoveryError) {
+          const message = recoveryError instanceof MovieError
+            ? this.cleanMessage(recoveryError.message)
+            : "Automatic Veo replacement could not be queued.";
+          await this.store.update(job.id, current => {
+            current.warnings.push(`Automatic video recovery stopped: ${message}`);
+            current.events.push({
+              at: new Date().toISOString(), stage: "FAILED",
+              message: `Automatic video recovery stopped: ${message}`, provider: null, shotId: null,
+            });
+          });
+        }
       }
     }
     return true;

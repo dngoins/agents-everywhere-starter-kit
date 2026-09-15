@@ -12,7 +12,7 @@ import {
 import type { GenerationContext, MovieConfig, RendererService } from "../src/domain/services";
 import { JobStore } from "../src/jobs/store";
 import { MovieWorker } from "../src/jobs/worker";
-import { retrySummary, validateRetryAssets } from "../src/jobs/retry";
+import { automaticVideoRecovery, retrySummary, validateRetryAssets } from "../src/jobs/retry";
 import { LocalMediaRepository, normalizeImage } from "../src/server/media";
 import { createApiHandlers, jobView } from "../src/server/api";
 import { executeMovie, type PipelineServices } from "../src/pipeline";
@@ -513,7 +513,7 @@ test("continuity recovery replaces only the rejected Veo segment twice, then per
   });
   assert.deepEqual(retrySummary(saved).videoRecovery, {
     replacementAttempts: 2, maxReplacementAttempts: 2, rejectedSegment: 2,
-    replacementAvailable: false, soraFallbackAvailable: true, imageMotionAvailable: true,
+    veoSubmissionUncertain: false, replacementAvailable: false, soraFallbackAvailable: true, imageMotionAvailable: true,
   });
   await assert.rejects(
     f.store.retryOwned(f.job.id, ownerId, { ...action(2), video_recovery_action: "replace-rejected-clip" }, verifyNothing),
@@ -585,6 +585,10 @@ test("explicit Sora fallback keeps approved images, discards Veo clips, and gene
       provider: "Google Veo", model: "veo-3.1-generate-preview", operationId: "veo-0",
     };
     job.operations = [0, 1, 2].map(index => ({ provider: "Google Veo", id: `veo-${index}` }));
+    job.videoRecoveries = [
+      { action: "replace-rejected-clip", at: new Date().toISOString(), segmentIndex: 2, supersededOperationId: "veo-original" },
+      { action: "replace-rejected-clip", at: new Date().toISOString(), segmentIndex: 2, supersededOperationId: "veo-replacement-1" },
+    ];
     job.videoSegments = [
       { index: 0, submitted: true, operationId: "veo-0", clip: job.hero },
       {
@@ -699,4 +703,81 @@ test("explicit Sora fallback keeps approved images, discards Veo clips, and gene
   assert.equal(switched.job.videoSegments?.every(segment => segment.clip?.provider === "OpenAI Sora"), true);
   assert.equal(switched.job.operations.filter(operation => operation.provider === "Google Veo").length, 3);
   assert.equal(switched.job.operations.filter(operation => operation.provider === "OpenAI Sora").length, 3);
+});
+
+test("uncertain Veo submission blocks Veo retry but permits one explicit Sora switch", async t => {
+  const f = await fixture(t, 6);
+  const failed = await f.store.update(f.job.id, job => {
+    job.request.enable_hero_video = true;
+    job.request.video_provider = "google-veo";
+    job.request.render_layout = "video-bookends";
+    job.request.movie_duration_seconds = 13;
+    job.plan!.videoProvider = "google-veo";
+    job.heroAttempted = true;
+    job.hero = null;
+    job.operations = job.operations.filter(operation => operation.provider !== "Google Veo");
+    job.videoSegments = undefined;
+    job.error = {
+      code: "VEO_WORKFLOW_FAILED", stage: "GENERATING_HERO",
+      message: "The Google Veo workflow could not finish submission.",
+    };
+  });
+  assert.deepEqual(retrySummary(failed).videoRecovery, {
+    replacementAttempts: 0, maxReplacementAttempts: 2,
+    veoSubmissionUncertain: true, replacementAvailable: true,
+    soraFallbackAvailable: false, imageMotionAvailable: false,
+  });
+  assert.equal(retrySummary(failed).eligible, true);
+  assert.deepEqual(automaticVideoRecovery(failed), {
+    idempotency_key: `auto-veo-replacement-1-${f.job.id}`,
+    expected_attempt: 0,
+    video_recovery_action: "replace-rejected-clip",
+  });
+  await assert.rejects(
+    f.store.retryOwned(f.job.id, ownerId, action(), async () => {}),
+    (error: unknown) => error instanceof MovieError && error.code === "VIDEO_SUBMISSION_UNCERTAIN",
+  );
+  await assert.rejects(
+    f.store.retryOwned(f.job.id, ownerId, { ...action(), video_recovery_action: "use-sora" }, async () => {}),
+    (error: unknown) => error instanceof MovieError && error.code === "SORA_FALLBACK_UNAVAILABLE",
+  );
+  const first = await f.store.retryOwned(f.job.id, ownerId, {
+    ...action(), video_recovery_action: "replace-rejected-clip",
+  }, async () => {});
+  assert.equal(first.job.heroAttempted, false);
+  assert.equal(first.job.videoRecoveries?.length, 1);
+  const failedAgain = await f.store.update(f.job.id, job => {
+    job.status = "FAILED";
+    job.heroAttempted = true;
+    job.error = {
+      code: "VEO_WORKFLOW_FAILED", stage: "GENERATING_HERO",
+      message: "The replacement returned no operation ID.",
+    };
+  });
+  assert.equal(retrySummary(failedAgain).videoRecovery?.replacementAvailable, true);
+  const second = await f.store.retryOwned(f.job.id, ownerId, {
+    ...action(1), video_recovery_action: "replace-rejected-clip",
+  }, async () => {});
+  assert.equal(second.job.videoRecoveries?.length, 2);
+  const failedTwice = await f.store.update(f.job.id, job => {
+    job.status = "FAILED";
+    job.heroAttempted = true;
+    job.error = {
+      code: "VEO_WORKFLOW_FAILED", stage: "GENERATING_HERO",
+      message: "The second replacement returned no operation ID.",
+    };
+  });
+  assert.equal(retrySummary(failedTwice).videoRecovery?.replacementAvailable, false);
+  assert.equal(retrySummary(failedTwice).videoRecovery?.soraFallbackAvailable, true);
+  assert.deepEqual(automaticVideoRecovery(failedTwice), {
+    idempotency_key: `auto-sora-fallback-${f.job.id}`,
+    expected_attempt: 2,
+    video_recovery_action: "use-sora",
+  });
+  const request: RetryRequest = { ...action(2), video_recovery_action: "use-sora" };
+  const switched = await f.store.retryOwned(f.job.id, ownerId, request, async () => {});
+  assert.equal(switched.job.status, "RECEIVED");
+  assert.equal(switched.job.videoRecoveries?.at(-1)?.action, "use-sora");
+  assert.equal((await f.store.retryOwned(f.job.id, ownerId, request, async () => {})).attempt, 3);
+  assert.equal(switched.job.operations.some(operation => operation.provider === "Google Veo"), false);
 });

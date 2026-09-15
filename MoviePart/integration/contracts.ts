@@ -248,7 +248,8 @@ export interface MovieRetrySummary {
   videoRecovery?: {
     replacementAttempts: number;
     maxReplacementAttempts: number;
-    rejectedSegment: number;
+    rejectedSegment?: number;
+    veoSubmissionUncertain: boolean;
     replacementAvailable: boolean;
     soraFallbackAvailable: boolean;
     imageMotionAvailable: boolean;

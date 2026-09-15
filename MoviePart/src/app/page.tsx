@@ -484,13 +484,19 @@ export default function MovieStudio() {
 
           {error && <div className="notice error" role="alert"><strong>Something needs your attention</strong><p>{error}</p>{jobId && !job && <button className="text-button" onClick={() => { setJobId(null); localStorage.removeItem("movie-magic:last-job"); }}>Stop watching this job</button>}</div>}
           {job?.error && <div className="notice error" role="alert"><strong>{stageLabels[job.error.stage]}</strong><p>{job.error.message}</p><small>Your saved plan and artifacts remain below. {job.retry?.videoRecovery
-            ? job.retry.videoRecovery.replacementAvailable
-              ? "Authorize a replacement clip below, or create a new take to change the brief."
-              : "The replacement limit is reached. An operator may approve image motion below, or create a new take."
+            ? job.retry.videoRecovery.veoSubmissionUncertain
+              ? job.retry.videoRecovery.replacementAvailable
+                ? "The studio is automatically queuing a bounded Veo replacement."
+                : "Both Veo replacement attempts are used. The studio is automatically switching to Sora 2 Pro."
+              : job.retry.videoRecovery.replacementAvailable
+              ? "The studio is automatically queuing a bounded Veo replacement."
+              : "The replacement limit is reached. The studio is automatically switching to Sora 2 Pro."
             : job.retry?.eligible ? "Retry this movie to keep approved work, or create a new take to change its brief." : "A new take requires an explicit submission."}</small></div>}
           {job && <MovieRecovery job={job} retrying={retrying} disabled={busy} onRetry={() => void retryMovie()}
             onReplaceClip={() => {
-              if (window.confirm("Generate one replacement Veo clip? This may incur an additional provider charge. Approved clips and storyboard work will be kept.")) {
+              if (window.confirm(job.retry?.videoRecovery?.veoSubmissionUncertain
+                ? "Generate another Veo clip? The prior request may have been accepted without returning an operation ID, so this replacement can create an additional charge. Approved storyboard work will be kept."
+                : "Generate one replacement Veo clip? This may incur an additional provider charge. Approved clips and storyboard work will be kept.")) {
                 void retryMovie(false, "replace-rejected-clip");
               }
             }}

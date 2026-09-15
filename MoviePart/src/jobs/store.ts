@@ -9,7 +9,7 @@ import type { LocalMediaRepository } from "../server/media";
 import { retrySummary, validateSavedPlan } from "./retry";
 import { assertJobNotCancelled, jobReceiptSchema, referencedAssets, type JobReceipt } from "./lifecycle";
 import { assertVeoRecoverable } from "../domain/veo-failure";
-import { savedVideoSegments } from "../domain/video-sequence-state";
+import { hasUncertainVideoSegment, savedVideoSegments } from "../domain/video-sequence-state";
 
 export const WORKER_HEARTBEAT_MS = 3_000;
 export const WORKER_STALE_MS = 15_000;
@@ -192,6 +192,10 @@ export class JobStore {
       if (claimed) throw new MovieError("JOB_ACTIVE", "The previous worker is still finishing. Wait briefly and retry the same request.", 409);
       validateSavedPlan(job);
       const recovery = retrySummary(job).videoRecovery;
+      if (recovery?.veoSubmissionUncertain
+          && !["replace-rejected-clip", "use-sora"].includes(request.video_recovery_action ?? "")) {
+        throw new MovieError("VIDEO_SUBMISSION_UNCERTAIN", "The Veo submission may have been accepted without a recoverable operation ID. Do not authorize another Veo request.", 409);
+      }
       if (job.error?.code === "VEO_CONTINUITY_REJECTED" && !request.video_recovery_action) {
         throw new MovieError("VIDEO_RECOVERY_REQUIRED", "This retained clip cannot improve through ordinary retry. Explicitly authorize a replacement clip.", 409);
       }
@@ -201,13 +205,15 @@ export class JobStore {
         }
         const segments = savedVideoSegments(job);
         const rejected = segments.filter(segment => !segment.clip && !!segment.operationId);
-        if (rejected.length !== 1) {
+        const uncertain = segments.filter(segment => segment.submitted && !segment.clip && !segment.operationId);
+        if (rejected.length + uncertain.length !== 1) {
           throw new MovieError("VIDEO_RECOVERY_UNAVAILABLE", "Exactly one continuity-rejected retained clip is required for replacement.", 409);
         }
-        const target = rejected[0];
+        const target = rejected[0] ?? uncertain[0];
         job.videoRecoveries = [...(job.videoRecoveries ?? []), {
           action: "replace-rejected-clip", at: new Date().toISOString(),
-          segmentIndex: target.index, supersededOperationId: target.operationId!,
+          segmentIndex: target.index,
+          ...(target.operationId ? { supersededOperationId: target.operationId } : {}),
         }];
         if (segments.length > 1) {
           job.videoSegments = segments.map(segment => segment.index === target.index

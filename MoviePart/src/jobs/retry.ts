@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import sharp from "sharp";
-import { MAX_VIDEO_REPLACEMENTS, MovieError, productionModeOf, resolveHeroMode, resolveStoryFormat, validatePlan, type MovieJob } from "../domain";
+import { MAX_VIDEO_REPLACEMENTS, MovieError, productionModeOf, resolveHeroMode, resolveStoryFormat, validatePlan, type MovieJob, type RetryRequest } from "../domain";
 import { isFrameApproved, selectStoryboardFrames } from "../domain/storyboard-state";
 import type { MediaRepository } from "../domain/services";
 import { getWardrobeLock, readImage } from "../references";
@@ -14,27 +14,50 @@ export function retrySummary(job: MovieJob): MovieRetrySummary {
   const approvedShots = frames.filter(isFrameApproved).length;
   const usable = selectStoryboardFrames([...job.frames, ...(job.sceneFrames ?? [])].filter(frame => frame.source !== "extracted"), job.plan?.shots.map(shot => shot.id) ?? [])
     .filter(frame => isFrameApproved(frame) || frame.designerDecision?.action !== "regenerate" && frame.continuity.verdict !== "REJECT").length;
-  const uncertainVeoSubmission = job.request.video_provider === "google-veo" && job.heroAttempted && !job.hero
-    && !job.operations.some(operation => operation.provider === "Google Veo");
+  const uncertainVeoSubmission = !!(job.request.video_provider === "google-veo" && job.heroAttempted && !job.hero
+    && !job.operations.some(operation => operation.provider === "Google Veo"));
   const rejectedSegments = job.error?.code === "VEO_CONTINUITY_REJECTED"
     ? savedVideoSegments(job).filter(segment => !segment.clip && !!segment.operationId) : [];
   const replacementAttempts = job.videoRecoveries?.filter(item => item.action === "replace-rejected-clip").length ?? 0;
-  const videoRecovery = job.request.video_provider === "google-veo" && rejectedSegments.length === 1
+  const canSwitchUncertainVeo = uncertainVeoSubmission
+    && ["VEO_WORKFLOW_FAILED", "VEO_TIMEOUT"].includes(job.error?.code ?? "");
+  const videoRecovery = job.request.video_provider === "google-veo" && (rejectedSegments.length === 1 || canSwitchUncertainVeo)
     ? {
         replacementAttempts,
         maxReplacementAttempts: MAX_VIDEO_REPLACEMENTS,
-        rejectedSegment: rejectedSegments[0].index,
+        ...(rejectedSegments[0] ? { rejectedSegment: rejectedSegments[0].index } : {}),
+        veoSubmissionUncertain: canSwitchUncertainVeo,
         replacementAvailable: replacementAttempts < MAX_VIDEO_REPLACEMENTS,
-        soraFallbackAvailable: activeVideoProvider(job) === "google-veo",
-        imageMotionAvailable: replacementAttempts >= MAX_VIDEO_REPLACEMENTS,
+        soraFallbackAvailable: activeVideoProvider(job) === "google-veo"
+          && replacementAttempts >= MAX_VIDEO_REPLACEMENTS,
+        imageMotionAvailable: rejectedSegments.length === 1 && replacementAttempts >= MAX_VIDEO_REPLACEMENTS,
       }
     : undefined;
+  const ordinarilyEligible = !uncertainVeoSubmission && !hasUncertainVideoSegment(job);
   return {
     attempt: job.retries?.length ?? 0,
-    eligible: job.status === "FAILED" && job.error?.code !== "JOB_CANCELLED" && !terminalVeoMessage(job.error?.code) && !!job.plan && !!job.character && !uncertainVeoSubmission && !hasUncertainVideoSegment(job) && (!job.result || productionModeOf(job) === "movie-first"),
+    eligible: job.status === "FAILED" && job.error?.code !== "JOB_CANCELLED" && !terminalVeoMessage(job.error?.code)
+      && !!job.plan && !!job.character && (ordinarilyEligible || !!videoRecovery)
+      && (!job.result || productionModeOf(job) === "movie-first"),
     approvedShots,
     remainingShots: (job.plan?.shots.length ?? 0) - (productionModeOf(job) === "movie-first" ? usable : approvedShots),
     ...(videoRecovery ? { videoRecovery } : {}),
+  };
+}
+
+export function automaticVideoRecovery(job: MovieJob): RetryRequest | null {
+  const retry = retrySummary(job);
+  if (!retry.videoRecovery) return null;
+  const action = retry.videoRecovery.replacementAvailable
+    ? "replace-rejected-clip"
+    : retry.videoRecovery.soraFallbackAvailable ? "use-sora" : null;
+  if (!action) return null;
+  return {
+    idempotency_key: action === "use-sora"
+      ? `auto-sora-fallback-${job.id}`
+      : `auto-veo-replacement-${retry.videoRecovery.replacementAttempts + 1}-${job.id}`,
+    expected_attempt: retry.attempt,
+    video_recovery_action: action,
   };
 }
 
