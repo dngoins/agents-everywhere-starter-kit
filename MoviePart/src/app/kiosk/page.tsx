@@ -113,7 +113,7 @@ export default function KioskPage() {
           <p className={styles.help}>Only an explicit approval applies to this exact summary. You can correct it or decline.</p>
           <div className={styles.actions}>
             <button className={styles.primary} disabled={state.busy} onClick={() => run(controller.confirm(pending, "approve", "touch"))}>
-              {pending.kind === "studio" ? "Approve & create movie" : pending.kind === "calendar" ? "Create appointment & invite" : "Approve this summary"}
+              {pending.kind === "studio" ? "Approve brief & create movie" : pending.kind === "calendar" ? "Create appointment & invite" : "Approve this summary"}
             </button>
             <button disabled={state.busy} onClick={() => run(controller.confirm(pending, "reject", "touch"))}>No, change this</button>
           </div>
@@ -121,9 +121,13 @@ export default function KioskPage() {
       )}
       {!pending && active && (touch || editStep) && ["consent", "visitor", "context", "selection"].includes(step) &&
         <TouchAnswer key={`${step}:${snapshot?.inputRevision}`} controller={controller} step={step} onDone={() => setEditStep(null)} />}
+      {!pending && active && prompt.step === "capture" && <div className={styles.actions}>
+        <button className={styles.primary} disabled={!controller.canCapture()} onClick={() => openDrawer("photos")}>Review photos</button>
+        {!controller.canCapture() && <p className={styles.help}>Photography starts only after consent, likeness and provider processing are approved.</p>}
+      </div>}
       {!pending && active && prompt.step === "review" && <div className={styles.actions}>
-        <button className={styles.primary} disabled={!controller.canRequestStudio()} onClick={() => run(controller.requestStudio())}>Review my movie</button>
-        {!controller.canRequestStudio() && <p className={styles.help}>Finish syncing your current photos before reviewing the movie.</p>}
+        <button className={styles.primary} disabled={!controller.canRequestStudio()} onClick={() => run(controller.requestStudio())}>Create brief</button>
+        {!controller.canRequestStudio() && <p className={styles.help}>Finish syncing photos and preferences before creating the brief.</p>}
       </div>}
       {!pending && active && prompt.step === "ready" && <div className={styles.actions}>
         <button className={styles.primary} disabled={state.movieLoading} onClick={() => run(controller.acceptPlayback())}>

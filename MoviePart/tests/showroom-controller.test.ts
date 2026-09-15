@@ -7,7 +7,8 @@ import {
 } from "../../FinalProject/src/contracts/showroom";
 import type { ShowroomAction, ShowroomSnapshot, PendingAction } from "../../FinalProject/src/contracts/showroom";
 import { ShowroomController } from "../src/kiosk/showroom-controller";
-import type { ShowroomApi } from "../src/kiosk/showroom-controller";
+import type { ShowroomApi, ShowroomState } from "../src/kiosk/showroom-controller";
+import { showroomPrompt, showroomStep } from "../src/kiosk/showroom-guide";
 import { ShowroomClientError } from "../integration/showroom-client";
 import { ReferenceCapture } from "../src/kiosk/capture";
 import type { CaptureView } from "../src/kiosk/capture";
@@ -114,6 +115,43 @@ function fixture() {
     }, async () => ({ blob: new Blob([`photo${index}`], { type: "image/jpeg" }), width: 640, height: 480, sha256: String(index).padStart(64, "0") })),
   };
 }
+
+function guideState(update: Partial<ShowroomSnapshot>): ShowroomState {
+  return {
+    connection: "active",
+    snapshot: ShowroomSnapshotSchema.parse({
+      ...examples.ShowroomSnapshotSchema,
+      pendingAction: null,
+      acceptedStudio: null,
+      studio: { status: "idle" },
+      playback: { status: "idle" },
+      calendar: { status: "idle" },
+      bridge: null,
+      motionGrant: null,
+      ...update,
+    }),
+    catalog: null,
+    busy: false,
+    error: null,
+    movieUrl: null,
+    movieLoading: false,
+    playbackError: null,
+    stopState: "unavailable",
+    generation: 0,
+  };
+}
+
+test("showroom guide starts with consent, then quiet capture, then preferences before brief review", () => {
+  assert.equal(showroomStep(guideState({ consent: null, captureSet: null, visitor: null, context: null, selection: null })), "consent");
+  const capture = guideState({ captureSet: null, visitor: null, context: null, selection: null });
+  assert.equal(showroomStep(capture), "capture");
+  assert.match(showroomPrompt(capture).message, /one to four clear photos/i);
+  assert.equal(showroomStep(guideState({ visitor: null, context: null, selection: null })), "visitor");
+  assert.equal(showroomStep(guideState({ context: null, selection: null })), "context");
+  assert.equal(showroomStep(guideState({ selection: null })), "selection");
+  assert.equal(showroomStep(guideState({})), "review");
+  assert.match(showroomPrompt(guideState({})).message, /Create the brief/i);
+});
 
 test("spoken and touch approvals race through one exact pending-action mutation", async t => {
   const f = fixture(); t.after(() => f.controller.dispose());
