@@ -177,6 +177,8 @@ The [example environment file](.env.example) lists the supported operator settin
 | Settings | Purpose |
 |---|---|
 | `CONTINUITY_POLICY`, `STORYBOARD_MAX_ATTEMPTS`, `STORYBOARD_CONCURRENCY` | Default `practical`, 8 attempts, 2 concurrent shot tasks; allowed policies are `practical`/`strict`, attempts 1–20, concurrency 1–4 |
+
+When a completed Google Veo clip fails continuity review, ordinary retry does not resubmit it. The operator may explicitly authorize up to two replacement clips; each authorization can incur another provider charge and preserves approved storyboard work and prior clips. If both replacements fail, the operator may explicitly finish the saved plan as **Image motion only**. This fallback is never automatic and is labeled as image motion in the result.
 | `MOVIE_DATA_DIR` | Use `.movie-data` for the private studio/worker root; the separate media service stores its state below `media-service` within this root |
 | `MOVIE_API_TOKEN`, `MOVIE_STUDIO_URL` | Optional machine/CLI access and its destination, default `http://127.0.0.1:3200`; not kiosk or media-service credentials |
 | `FFMPEG_PATH`, `FFPROBE_PATH` | Optional absolute executable overrides; leave unset to use bundled binaries |

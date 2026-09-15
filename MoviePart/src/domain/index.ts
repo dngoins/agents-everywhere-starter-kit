@@ -325,7 +325,12 @@ export const retryRequestSchema = z.object({
   idempotency_key: z.string().min(8).max(120),
   expected_attempt: z.number().int().min(0).max(1_000_000),
   production_mode: z.literal("movie-first").optional(),
-}).strict();
+  video_recovery_action: z.enum(["replace-rejected-clip", "use-image-motion"]).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (value.production_mode && value.video_recovery_action) {
+    ctx.addIssue({ code: "custom", message: "Choose one recovery action." });
+  }
+});
 export type RetryRequest = z.infer<typeof retryRequestSchema>;
 export const retryRecordSchema = z.object({
   idempotencyKey: z.string(),
@@ -333,6 +338,14 @@ export const retryRecordSchema = z.object({
   requestedAt: z.iso.datetime(),
   previousError: jobErrorSchema.nullable(),
   productionMode: productionModeSchema.optional(),
+  videoRecoveryAction: z.enum(["replace-rejected-clip", "use-image-motion"]).optional(),
+}).strict();
+export const MAX_VIDEO_REPLACEMENTS = 2;
+export const videoRecoveryRecordSchema = z.object({
+  action: z.enum(["replace-rejected-clip", "use-image-motion"]),
+  at: z.iso.datetime(),
+  segmentIndex: z.number().int().min(0).max(2).optional(),
+  supersededOperationId: z.string().min(1).optional(),
 }).strict();
 export const jobEventSchema = z.object({
   at: z.iso.datetime(),
@@ -364,6 +377,7 @@ export const jobSchema = z.object({
   result: renderResultSchema.nullable(),
   operations: z.array(z.object({ provider: z.string(), id: z.string() })),
   retries: z.array(retryRecordSchema).optional(),
+  videoRecoveries: z.array(videoRecoveryRecordSchema).max(MAX_VIDEO_REPLACEMENTS + 1).optional(),
   designerDecisions: z.array(z.object({
     assetId: z.uuid(),
     request: frameDecisionRequestSchema,

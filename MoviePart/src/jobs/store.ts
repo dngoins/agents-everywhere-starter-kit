@@ -9,6 +9,7 @@ import type { LocalMediaRepository } from "../server/media";
 import { retrySummary, validateSavedPlan } from "./retry";
 import { assertJobNotCancelled, jobReceiptSchema, referencedAssets, type JobReceipt } from "./lifecycle";
 import { assertVeoRecoverable } from "../domain/veo-failure";
+import { savedVideoSegments } from "../domain/video-sequence-state";
 
 export const WORKER_HEARTBEAT_MS = 3_000;
 export const WORKER_STALE_MS = 15_000;
@@ -161,7 +162,8 @@ export class JobStore {
     const index = job.retries?.findIndex(retry => retry.idempotencyKey === request.idempotency_key) ?? -1;
     if (index < 0) return null;
     if (job.retries![index].expectedAttempt !== request.expected_attempt ||
-        job.retries![index].productionMode !== request.production_mode) {
+      job.retries![index].productionMode !== request.production_mode ||
+      job.retries![index].videoRecoveryAction !== request.video_recovery_action) {
       throw new MovieError("IDEMPOTENCY_CONFLICT", "This retry key was used with a different attempt. Reuse the original retry request.", 409);
     }
     return { job, attempt: index + 1 };
@@ -189,6 +191,42 @@ export class JobStore {
       });
       if (claimed) throw new MovieError("JOB_ACTIVE", "The previous worker is still finishing. Wait briefly and retry the same request.", 409);
       validateSavedPlan(job);
+      const recovery = retrySummary(job).videoRecovery;
+      if (job.error?.code === "VEO_CONTINUITY_REJECTED" && !request.video_recovery_action) {
+        throw new MovieError("VIDEO_RECOVERY_REQUIRED", "This retained clip cannot improve through ordinary retry. Explicitly authorize a replacement clip.", 409);
+      }
+      if (request.video_recovery_action === "replace-rejected-clip") {
+        if (!recovery?.replacementAvailable) {
+          throw new MovieError("VIDEO_REPLACEMENT_LIMIT", "The replacement limit has been reached. An operator may explicitly finish with image motion instead.", 409);
+        }
+        const segments = savedVideoSegments(job);
+        const rejected = segments.filter(segment => !segment.clip && !!segment.operationId);
+        if (rejected.length !== 1) {
+          throw new MovieError("VIDEO_RECOVERY_UNAVAILABLE", "Exactly one continuity-rejected retained clip is required for replacement.", 409);
+        }
+        const target = rejected[0];
+        job.videoRecoveries = [...(job.videoRecoveries ?? []), {
+          action: "replace-rejected-clip", at: new Date().toISOString(),
+          segmentIndex: target.index, supersededOperationId: target.operationId!,
+        }];
+        if (segments.length > 1) {
+          job.videoSegments = segments.map(segment => segment.index === target.index
+            ? { index: segment.index, submitted: false, ...(segment.startFrameAssetId ? { startFrameAssetId: segment.startFrameAssetId } : {}) }
+            : segment);
+        } else {
+          job.heroAttempted = false;
+        }
+      }
+      if (request.video_recovery_action === "use-image-motion") {
+        if (!recovery?.imageMotionAvailable) {
+          throw new MovieError("VIDEO_FALLBACK_UNAVAILABLE", "Image-motion fallback is available only after the bounded replacement attempts are exhausted.", 409);
+        }
+        job.videoRecoveries = [...(job.videoRecoveries ?? []), {
+          action: "use-image-motion", at: new Date().toISOString(),
+        }];
+        job.productionMode = "movie-first";
+        job.result = null;
+      }
       if (request.production_mode === "movie-first" && job.request.video_provider) {
         throw new MovieError("ANIMATION_REQUIRED", "A generated-video movie cannot silently switch to animated stills. Create a separate image-only take explicitly.", 409);
       }
@@ -205,6 +243,7 @@ export class JobStore {
       idempotencyKey: request.idempotency_key, expectedAttempt: request.expected_attempt,
       requestedAt: at, previousError: job.error,
       ...(request.production_mode ? { productionMode: request.production_mode } : {}),
+      ...(request.video_recovery_action ? { videoRecoveryAction: request.video_recovery_action } : {}),
     }];
     job.status = "RECEIVED";
     job.updatedAt = at;
@@ -213,7 +252,11 @@ export class JobStore {
     if (productionModeOf(job) !== "movie-first") job.result = null;
     job.events.push({
       at, stage: "RECEIVED", provider: null, shotId: null,
-      message: productionModeOf(job) === "movie-first"
+      message: request.video_recovery_action === "use-image-motion"
+        ? "Operator-approved image-motion fallback requested. Keeping the plan and usable visuals; no replacement video will be submitted."
+        : request.video_recovery_action === "replace-rejected-clip"
+        ? "Operator-approved replacement requested for the rejected animation segment. Approved clips and storyboard work are retained."
+        : productionModeOf(job) === "movie-first"
         ? "Movie-first production requested. Keeping the plan and usable visuals; storyboard images will be extracted after encoding."
         : "Explicit retry accepted. Keeping the director plan and approved shots; only unfinished work will run.",
     });

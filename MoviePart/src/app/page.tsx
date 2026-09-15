@@ -237,18 +237,20 @@ export default function MovieStudio() {
     }
   }
 
-  async function retryMovie(makeMovieFirst = false) {
+  async function retryMovie(makeMovieFirst = false, videoRecoveryAction?: MovieRetryRequest["video_recovery_action"]) {
     if (!job || !job.retry?.eligible || busy || retryInFlight.current) return;
     retryInFlight.current = true;
     setRetrying(true);
     setRetryError("");
     const client = new MovieMagicClient({ baseUrl: window.location.origin });
     if (pendingRetry.current?.jobId !== job.id ||
-        !!pendingRetry.current.request.production_mode !== makeMovieFirst) {
+        !!pendingRetry.current.request.production_mode !== makeMovieFirst ||
+        pendingRetry.current.request.video_recovery_action !== videoRecoveryAction) {
       pendingRetry.current = {
         jobId: job.id, request: {
           idempotency_key: crypto.randomUUID(), expected_attempt: job.retry.attempt,
           ...(makeMovieFirst ? { production_mode: "movie-first" as const } : {}),
+          ...(videoRecoveryAction ? { video_recovery_action: videoRecoveryAction } : {}),
         },
       };
     }
@@ -481,8 +483,23 @@ export default function MovieStudio() {
           {completeMovie && completeMovie.mode !== "hybrid-video" && <p className="incomplete-label">This saved result contains image motion, not a video-model animation. Storyboard approval is restored; genuine new animation requires a configured video-generation provider.</p>}
 
           {error && <div className="notice error" role="alert"><strong>Something needs your attention</strong><p>{error}</p>{jobId && !job && <button className="text-button" onClick={() => { setJobId(null); localStorage.removeItem("movie-magic:last-job"); }}>Stop watching this job</button>}</div>}
-          {job?.error && <div className="notice error" role="alert"><strong>{stageLabels[job.error.stage]}</strong><p>{job.error.message}</p><small>Your saved plan and artifacts remain below. {job.retry?.eligible ? "Retry this movie to keep approved work, or create a new take to change its brief." : "A new take requires an explicit submission."}</small></div>}
-          {job && <MovieRecovery job={job} retrying={retrying} disabled={busy} onRetry={() => void retryMovie()} {...(job.productionMode === "movie-first" ? { onMakeMovie: () => void retryMovie(true) } : {})} />}
+          {job?.error && <div className="notice error" role="alert"><strong>{stageLabels[job.error.stage]}</strong><p>{job.error.message}</p><small>Your saved plan and artifacts remain below. {job.retry?.videoRecovery
+            ? job.retry.videoRecovery.replacementAvailable
+              ? "Authorize a replacement clip below, or create a new take to change the brief."
+              : "The replacement limit is reached. An operator may approve image motion below, or create a new take."
+            : job.retry?.eligible ? "Retry this movie to keep approved work, or create a new take to change its brief." : "A new take requires an explicit submission."}</small></div>}
+          {job && <MovieRecovery job={job} retrying={retrying} disabled={busy} onRetry={() => void retryMovie()}
+            onReplaceClip={() => {
+              if (window.confirm("Generate one replacement Veo clip? This may incur an additional provider charge. Approved clips and storyboard work will be kept.")) {
+                void retryMovie(false, "replace-rejected-clip");
+              }
+            }}
+            onUseImageMotion={() => {
+              if (window.confirm("Finish this movie with image motion instead? No additional Veo clip will be generated, and the result will be labeled image motion.")) {
+                void retryMovie(false, "use-image-motion");
+              }
+            }}
+            {...(job.productionMode === "movie-first" && !job.retry?.videoRecovery ? { onMakeMovie: () => void retryMovie(true) } : {})} />}
           {retryError && <div className="notice error" role="alert"><strong>Retry needs attention</strong><p>{retryError}</p><p>Retrying this request uses the same key; it does not automatically authorize a second attempt.</p><button className="text-button" onClick={() => { pendingRetry.current = null; setRetryError(""); setPollRevision(value => value + 1); }}>Refresh movie before a new retry decision</button></div>}
           {designerMessage && <div className="notice" role="status">{designerMessage}</div>}
           {!!job?.warnings.length && <div className="notice"><strong>Production notes</strong>{job.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}

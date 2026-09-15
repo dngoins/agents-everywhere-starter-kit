@@ -1,12 +1,12 @@
 import { stat } from "node:fs/promises";
 import sharp from "sharp";
-import { MovieError, productionModeOf, resolveHeroMode, resolveStoryFormat, validatePlan, type MovieJob } from "../domain";
+import { MAX_VIDEO_REPLACEMENTS, MovieError, productionModeOf, resolveHeroMode, resolveStoryFormat, validatePlan, type MovieJob } from "../domain";
 import { isFrameApproved, selectStoryboardFrames } from "../domain/storyboard-state";
 import type { MediaRepository } from "../domain/services";
 import { getWardrobeLock, readImage } from "../references";
 import type { GenerationContext } from "../domain/services";
 import type { MovieRetrySummary } from "../../integration/contracts";
-import { hasUncertainVideoSegment } from "../domain/video-sequence-state";
+import { hasUncertainVideoSegment, savedVideoSegments } from "../domain/video-sequence-state";
 import { terminalVeoMessage } from "../domain/veo-failure";
 
 export function retrySummary(job: MovieJob): MovieRetrySummary {
@@ -16,11 +16,24 @@ export function retrySummary(job: MovieJob): MovieRetrySummary {
     .filter(frame => isFrameApproved(frame) || frame.designerDecision?.action !== "regenerate" && frame.continuity.verdict !== "REJECT").length;
   const uncertainVeoSubmission = job.request.video_provider === "google-veo" && job.heroAttempted && !job.hero
     && !job.operations.some(operation => operation.provider === "Google Veo");
+  const rejectedSegments = job.error?.code === "VEO_CONTINUITY_REJECTED"
+    ? savedVideoSegments(job).filter(segment => !segment.clip && !!segment.operationId) : [];
+  const replacementAttempts = job.videoRecoveries?.filter(item => item.action === "replace-rejected-clip").length ?? 0;
+  const videoRecovery = job.request.video_provider === "google-veo" && rejectedSegments.length === 1
+    ? {
+        replacementAttempts,
+        maxReplacementAttempts: MAX_VIDEO_REPLACEMENTS,
+        rejectedSegment: rejectedSegments[0].index,
+        replacementAvailable: replacementAttempts < MAX_VIDEO_REPLACEMENTS,
+        imageMotionAvailable: replacementAttempts >= MAX_VIDEO_REPLACEMENTS,
+      }
+    : undefined;
   return {
     attempt: job.retries?.length ?? 0,
     eligible: job.status === "FAILED" && job.error?.code !== "JOB_CANCELLED" && !terminalVeoMessage(job.error?.code) && !!job.plan && !!job.character && !uncertainVeoSubmission && !hasUncertainVideoSegment(job) && (!job.result || productionModeOf(job) === "movie-first"),
     approvedShots,
     remainingShots: (job.plan?.shots.length ?? 0) - (productionModeOf(job) === "movie-first" ? usable : approvedShots),
+    ...(videoRecovery ? { videoRecovery } : {}),
   };
 }
 

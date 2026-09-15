@@ -230,6 +230,12 @@ export interface MovieRetryRequest {
   expected_attempt: number;
   /** Explicitly switch a failed reviewed job to movie-first production. */
   production_mode?: "movie-first";
+  /**
+   * Explicit operator recovery for a continuity-rejected Google Veo clip.
+   * Replacement may create one additional paid request. Image motion is
+   * available only after the bounded replacement attempts are exhausted.
+   */
+  video_recovery_action?: "replace-rejected-clip" | "use-image-motion";
 }
 export interface MovieRetryAccepted extends MovieJobAccepted {
   retry_attempt: number;
@@ -239,6 +245,13 @@ export interface MovieRetrySummary {
   eligible: boolean;
   approvedShots: number;
   remainingShots: number;
+  videoRecovery?: {
+    replacementAttempts: number;
+    maxReplacementAttempts: number;
+    rejectedSegment: number;
+    replacementAvailable: boolean;
+    imageMotionAvailable: boolean;
+  };
 }
 
 export interface FrameDecisionRequest {

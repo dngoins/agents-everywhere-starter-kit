@@ -2,8 +2,9 @@ import React from "react";
 import type { JobView } from "../../integration/contracts";
 import { getMovieFormat } from "../domain";
 
-export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie }: {
+export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, onReplaceClip, onUseImageMotion }: {
   job: JobView; retrying: boolean; disabled: boolean; onRetry: () => void; onMakeMovie?: () => void;
+  onReplaceClip?: () => void; onUseImageMotion?: () => void;
 }) {
   if (job.status !== "FAILED" || !job.retry?.eligible) return null;
   if (onMakeMovie) return <section className="movie-recovery" aria-label="Finish this movie">
@@ -11,6 +12,22 @@ export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie }:
     <p>Keep the saved plan and usable visuals. Generate missing scene visuals once, encode an animated-image movie, then extract its storyboard. No continuity score or approval is required.</p>
     <p>This uses cinematic image motion, not fully generated moving footage. New scene generation may incur API charges; existing visuals are reused.</p>
     <button type="button" className="retry-button" disabled={disabled || retrying} onClick={onMakeMovie}>{retrying ? "Starting…" : job.result ? "Extract storyboard from movie" : "Make movie from this plan"}</button>
+  </section>;
+  const recovery = job.retry.videoRecovery;
+  if (recovery) return <section className="movie-recovery" aria-label="Recover rejected animation">
+    <h3>{recovery.replacementAvailable ? `Replace animation clip ${recovery.rejectedSegment + 1}` : "Choose an explicit fallback"}</h3>
+    <p>The retained Veo clip did not pass continuity review. Ordinary retry would only review that same clip again, so it is disabled here.</p>
+    {recovery.replacementAvailable ? <>
+      <p>Generate one new replacement while keeping the approved storyboard and completed clips. This authorizes another paid provider request. Replacement attempt {recovery.replacementAttempts + 1} of {recovery.maxReplacementAttempts}.</p>
+      <button type="button" className="retry-button" disabled={disabled || retrying} onClick={onReplaceClip}>
+        {retrying ? "Authorizing replacement…" : "Generate replacement clip"}
+      </button>
+    </> : <>
+      <p>Both replacement attempts have been used. An operator can now finish this saved plan as image motion. No additional Veo request will be submitted, and the result will be labeled as image motion rather than generated footage.</p>
+      <button type="button" className="retry-button fallback-button" disabled={disabled || retrying} onClick={onUseImageMotion}>
+        {retrying ? "Starting image motion…" : "Use image motion instead"}
+      </button>
+    </>}
   </section>;
   const { approvedShots, remainingShots } = job.retry;
   const requiresSora = job.plan?.videoProvider === "openai-sora";

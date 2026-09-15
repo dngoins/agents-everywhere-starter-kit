@@ -51,12 +51,12 @@ export function jobView(job: MovieJob): JobView {
     events: job.events, warnings: job.warnings, error: job.error && terminalVeo ? { ...job.error, message: terminalVeo } : job.error, character: job.character, plan: job.plan,
     frames: movieFirst ? job.frames.filter(frame => frame.source === "extracted") : job.frames, hero: job.hero,
     productionMode: productionModeOf(job),
-    renderLayout: job.result?.renderLayout ?? job.request.render_layout ?? "storyboard",
-    ...((job.result?.renderLayout ?? job.request.render_layout) === "video-bookends"
+    renderLayout: movieFirst ? "storyboard" : job.result?.renderLayout ?? job.request.render_layout ?? "storyboard",
+    ...(!movieFirst && (job.result?.renderLayout ?? job.request.render_layout) === "video-bookends"
       ? { movieDurationSeconds: job.request.movie_duration_seconds ?? 15 } : {}),
     videoClips: job.videoSegments?.filter(segment => segment.clip).sort((a, b) => a.index - b.index).flatMap(segment => segment.clip ? [segment.clip] : [])
       ?? (job.hero ? [job.hero] : []),
-    result: job.error?.code === "JOB_CANCELLED" || !requiredVideoPresent ? null : movieFirst ? job.result : job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
+    result: job.error?.code === "JOB_CANCELLED" || !movieFirst && !requiredVideoPresent ? null : movieFirst ? job.result : job.status === "COMPLETED" && !!job.plan && retry.remainingShots === 0 ? job.result : null,
     retry,
     reviewRevision: job.designerDecisions?.length ?? 0,
     designerReviewAllowed: job.error?.code !== "JOB_CANCELLED" && !terminalVeo && !!job.plan && !job.result && (job.status === "FAILED" || !job.storyboardLocked && ["STORYBOARDING", "VALIDATING"].includes(job.status)),
@@ -122,7 +122,7 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
 
   const verifyRecovery = async (job: MovieJob) => {
     const summary = retrySummary(job);
-    if (job.request.video_provider === "google-veo" && !job.hero && !providers().veo.available) {
+    if (productionModeOf(job) !== "movie-first" && job.request.video_provider === "google-veo" && !job.hero && !providers().veo.available) {
       throw new MovieError("VEO_NOT_READY", "Configure the Google video API key before retrying this animation-required movie.", 503);
     }
     if (summary.remainingShots && !(config.openaiKey && config.visionModel && config.imageModel)) {

@@ -99,3 +99,42 @@ test("failed-movie recovery is explicit, explains retained shots and costs, and 
   assert.match(assembly, /Retry final assembly/);
   assert.match(assembly, /No storyboard images or director plan will be regenerated/);
 });
+
+test("continuity recovery offers bounded paid replacement before explicit image-motion fallback", () => {
+  const base: JobView = {
+    id: "job", sessionId: "session", status: "FAILED", createdAt: "", updatedAt: "",
+    events: [], warnings: [], error: { code: "VEO_CONTINUITY_REJECTED", message: "Rejected", stage: "GENERATING_HERO" },
+    character: null, plan: null, frames: [], hero: null, result: null,
+    retry: {
+      attempt: 0, eligible: true, approvedShots: 4, remainingShots: 0,
+      videoRecovery: {
+        replacementAttempts: 0, maxReplacementAttempts: 2, rejectedSegment: 2,
+        replacementAvailable: true, imageMotionAvailable: false,
+      },
+    },
+  };
+  const replacement = renderToStaticMarkup(createElement(MovieRecovery, {
+    job: base, retrying: false, disabled: false, onRetry: () => {}, onReplaceClip: () => {},
+  }));
+  assert.match(replacement, /Replace animation clip 3/);
+  assert.match(replacement, /Replacement attempt 1 of 2/);
+  assert.match(replacement, /another paid provider request/);
+  assert.doesNotMatch(replacement, /Resume animation and assembly/);
+
+  const fallback = renderToStaticMarkup(createElement(MovieRecovery, {
+    job: {
+      ...base,
+      retry: {
+        ...base.retry!, videoRecovery: {
+          replacementAttempts: 2, maxReplacementAttempts: 2, rejectedSegment: 2,
+          replacementAvailable: false, imageMotionAvailable: true,
+        },
+      },
+    },
+    retrying: false, disabled: false, onRetry: () => {}, onUseImageMotion: () => {},
+  }));
+  assert.match(fallback, /Both replacement attempts have been used/);
+  assert.match(fallback, /Use image motion instead/);
+  assert.match(fallback, /rather than generated footage/);
+  assert.doesNotMatch(fallback, /Generate replacement clip/);
+});

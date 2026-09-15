@@ -12,6 +12,7 @@ import { validateRetryAssets } from "./jobs/retry";
 import { extractStoryboard } from "./render/extract-storyboard";
 import { createOpenAIVideoService } from "./providers/openai/video";
 import { generateVideoSequence } from "./video/sequence";
+import { activeVideoOperations } from "./domain/video-sequence-state";
 
 export interface PipelineServices {
   references: ReferenceService;
@@ -87,22 +88,24 @@ export async function executeMovie(
   }
   if (movieFirst) {
     if (!context.saveSceneFrame) throw new MovieError("SCENE_STORE_UNAVAILABLE", "Movie-first rendering requires private scene checkpoints.");
+    const renderPlan = job.videoRecoveries?.some(item => item.action === "use-image-motion")
+      ? { ...plan, videoProvider: undefined } : plan;
     let movie = job.result;
     if (!movie) {
       await context.warn("Movie-first output uses cinematic motion from generated visuals, not fully generated moving footage. Continuity scoring does not block this mode.");
       const sceneContext: GenerationContext = { ...context, saveFrame: context.saveSceneFrame };
       const frames = await storyboard.generate({
-        plan, character, product: job.product,
+        plan: renderPlan, character, product: job.product,
         existingFrames: [...job.frames, ...(job.sceneFrames ?? [])].filter(frame => frame.source !== "extracted"),
         productionMode: "movie-first",
       }, sceneContext);
-      validateRenderInput({ plan, frames, hero: job.hero, productionMode: "movie-first" }, job.id);
+      validateRenderInput({ plan: renderPlan, frames, hero: null, productionMode: "movie-first" }, job.id);
       await context.report({ stage: "ASSEMBLING", message: "Making the movie before extracting its storyboard.", provider: "FFmpeg" });
-      movie = await renderer.render({ plan, frames, hero: job.hero, productionMode: "movie-first", renderLayout: job.request.render_layout }, context);
+      movie = await renderer.render({ plan: renderPlan, frames, hero: null, productionMode: "movie-first" }, context);
       await checkpoint({ result: movie });
     }
     await context.report({ stage: "EXTRACTING_STORYBOARD", message: "Movie encoded. Extracting storyboard images from its actual frames.", provider: "FFmpeg" });
-    await (services?.extract ?? extractStoryboard)(config, plan, movie, context);
+    await (services?.extract ?? extractStoryboard)(config, renderPlan, movie, context);
     return movie;
   }
   let frames = await storyboard.generate({ plan, character, product: job.product, existingFrames: job.frames }, context);
@@ -144,7 +147,7 @@ export async function executeMovie(
     if (result.mode !== "hybrid-video") throw new MovieError("ANIMATION_REQUIRED", "The final output did not include the required generated animation.");
     return result;
   }
-  const veoOperation = job.operations.filter(operation => operation.provider === "Google Veo").at(-1)?.id;
+  const veoOperation = activeVideoOperations(job, "Google Veo").at(-1)?.id;
   const heroPreviouslyAttempted = job.heroAttempted || !!veoOperation;
   if (job.request.video_provider === "google-veo" && !hero && job.heroAttempted && !veoOperation) {
     throw new MovieError("VEO_SUBMISSION_UNCERTAIN", "A previous Veo submission was marked as started, but no operation ID was saved. Inspect that submission before authorizing a replacement; retry will not submit another paid video blindly.", 409);
