@@ -217,6 +217,20 @@ export class JobStore {
           job.heroAttempted = false;
         }
       }
+      if (request.video_recovery_action === "use-sora") {
+        if (!recovery?.soraFallbackAvailable) {
+          throw new MovieError("SORA_FALLBACK_UNAVAILABLE", "Sora fallback requires a continuity-rejected Veo clip and can be authorized only once.", 409);
+        }
+        job.videoRecoveries = [...(job.videoRecoveries ?? []), {
+          action: "use-sora", at: new Date().toISOString(),
+        }];
+        job.hero = null;
+        job.heroAttempted = false;
+        job.videoSegments = savedVideoSegments(job).map(segment => ({
+          index: segment.index, submitted: false,
+        }));
+        job.result = null;
+      }
       if (request.video_recovery_action === "use-image-motion") {
         if (!recovery?.imageMotionAvailable) {
           throw new MovieError("VIDEO_FALLBACK_UNAVAILABLE", "Image-motion fallback is available only after the bounded replacement attempts are exhausted.", 409);
@@ -254,6 +268,8 @@ export class JobStore {
       at, stage: "RECEIVED", provider: null, shotId: null,
       message: request.video_recovery_action === "use-image-motion"
         ? "Operator-approved image-motion fallback requested. Keeping the plan and usable visuals; no replacement video will be submitted."
+        : request.video_recovery_action === "use-sora"
+        ? "Operator-approved Sora 2 Pro fallback requested. Keeping the approved storyboard; Veo clips will not be reused or resubmitted."
         : request.video_recovery_action === "replace-rejected-clip"
         ? "Operator-approved replacement requested for the rejected animation segment. Approved clips and storyboard work are retained."
         : productionModeOf(job) === "movie-first"

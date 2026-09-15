@@ -235,7 +235,7 @@ export interface MovieRetryRequest {
    * Replacement may create one additional paid request. Image motion is
    * available only after the bounded replacement attempts are exhausted.
    */
-  video_recovery_action?: "replace-rejected-clip" | "use-image-motion";
+  video_recovery_action?: "replace-rejected-clip" | "use-sora" | "use-image-motion";
 }
 export interface MovieRetryAccepted extends MovieJobAccepted {
   retry_attempt: number;
@@ -250,6 +250,7 @@ export interface MovieRetrySummary {
     maxReplacementAttempts: number;
     rejectedSegment: number;
     replacementAvailable: boolean;
+    soraFallbackAvailable: boolean;
     imageMotionAvailable: boolean;
   };
 }

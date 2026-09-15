@@ -17,6 +17,7 @@ import { retrySummary, validateApprovedFrame, validateRetryAssets } from "../job
 import { lifecycleKeySchema } from "../jobs/lifecycle";
 import { UploadBatchStore } from "./upload-batches";
 import { terminalVeoMessage } from "../domain/veo-failure";
+import { activeVideoProvider } from "../domain/video-sequence-state";
 
 const privateHeaders = {
   "cache-control": "private, no-store",
@@ -44,8 +45,9 @@ export function jobView(job: MovieJob): JobView {
   const retry = retrySummary(job);
   const terminalVeo = terminalVeoMessage(job.error?.code);
   const movieFirst = productionModeOf(job) === "movie-first";
-  const requiredVideoPresent = job.request.video_provider === "openai-sora" ? job.hero?.provider === "OpenAI Sora"
-    : job.request.video_provider === "google-veo" ? job.hero?.provider === "Google Veo" : true;
+  const selectedVideoProvider = activeVideoProvider(job);
+  const requiredVideoPresent = selectedVideoProvider === "openai-sora" ? job.hero?.provider === "OpenAI Sora"
+    : selectedVideoProvider === "google-veo" ? job.hero?.provider === "Google Veo" : true;
   return {
     id: job.id, sessionId: job.request.session_id, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt,
     events: job.events, warnings: job.warnings, error: job.error && terminalVeo ? { ...job.error, message: terminalVeo } : job.error, character: job.character, plan: job.plan,
@@ -122,8 +124,12 @@ export function createApiHandlers(config: MovieConfig, dependencies: Dependencie
 
   const verifyRecovery = async (job: MovieJob) => {
     const summary = retrySummary(job);
-    if (productionModeOf(job) !== "movie-first" && job.request.video_provider === "google-veo" && !job.hero && !providers().veo.available) {
+    const selectedVideoProvider = activeVideoProvider(job);
+    if (productionModeOf(job) !== "movie-first" && selectedVideoProvider === "google-veo" && !job.hero && !providers().veo.available) {
       throw new MovieError("VEO_NOT_READY", "Configure the Google video API key before retrying this animation-required movie.", 503);
+    }
+    if (productionModeOf(job) !== "movie-first" && selectedVideoProvider === "openai-sora" && !providers().openaiVideo?.available) {
+      throw new MovieError("OPENAI_VIDEO_NOT_READY", "Configure OpenAI Sora 2 Pro before authorizing this fallback.", 503);
     }
     if (summary.remainingShots && !(config.openaiKey && config.visionModel && config.imageModel)) {
       throw new MovieError("OPENAI_NOT_READY", "Configure OpenAI image generation and vision review before retrying unfinished shots.", 503);

@@ -2,9 +2,10 @@ import React from "react";
 import type { JobView } from "../../integration/contracts";
 import { getMovieFormat } from "../domain";
 
-export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, onReplaceClip, onUseImageMotion }: {
+export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, onReplaceClip, onUseImageMotion, onUseSora }: {
   job: JobView; retrying: boolean; disabled: boolean; onRetry: () => void; onMakeMovie?: () => void;
   onReplaceClip?: () => void; onUseImageMotion?: () => void;
+  onUseSora?: () => void;
 }) {
   if (job.status !== "FAILED" || !job.retry?.eligible) return null;
   if (onMakeMovie) return <section className="movie-recovery" aria-label="Finish this movie">
@@ -28,6 +29,12 @@ export function MovieRecovery({ job, retrying, disabled, onRetry, onMakeMovie, o
         {retrying ? "Starting image motion…" : "Use image motion instead"}
       </button>
     </>}
+    {recovery.soraFallbackAvailable && <div className="provider-fallback">
+      <p><strong>Use another video provider.</strong> Sora 2 Pro can start again from the approved hero storyboard image and create its own complete clip sequence. It accepts product-only references: a safety check stops before submission if the image contains a person or face.</p>
+      <button type="button" className="retry-button fallback-button" disabled={disabled || retrying} onClick={onUseSora}>
+        {retrying ? "Authorizing Sora…" : "Try Sora 2 Pro"}
+      </button>
+    </div>}
   </section>;
   const { approvedShots, remainingShots } = job.retry;
   const requiresSora = job.plan?.videoProvider === "openai-sora";

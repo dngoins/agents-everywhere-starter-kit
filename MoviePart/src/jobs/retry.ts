@@ -6,7 +6,7 @@ import type { MediaRepository } from "../domain/services";
 import { getWardrobeLock, readImage } from "../references";
 import type { GenerationContext } from "../domain/services";
 import type { MovieRetrySummary } from "../../integration/contracts";
-import { hasUncertainVideoSegment, savedVideoSegments } from "../domain/video-sequence-state";
+import { activeVideoProvider, hasUncertainVideoSegment, savedVideoSegments } from "../domain/video-sequence-state";
 import { terminalVeoMessage } from "../domain/veo-failure";
 
 export function retrySummary(job: MovieJob): MovieRetrySummary {
@@ -25,6 +25,7 @@ export function retrySummary(job: MovieJob): MovieRetrySummary {
         maxReplacementAttempts: MAX_VIDEO_REPLACEMENTS,
         rejectedSegment: rejectedSegments[0].index,
         replacementAvailable: replacementAttempts < MAX_VIDEO_REPLACEMENTS,
+        soraFallbackAvailable: activeVideoProvider(job) === "google-veo",
         imageMotionAvailable: replacementAttempts >= MAX_VIDEO_REPLACEMENTS,
       }
     : undefined;

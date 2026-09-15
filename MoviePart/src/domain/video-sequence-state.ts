@@ -1,5 +1,9 @@
 import { getMovieFormat, MovieError, type MovieJob, type VideoSegment } from "./index";
 
+export function activeVideoProvider(job: MovieJob): "google-veo" | "openai-sora" | undefined {
+  return job.videoRecoveries?.some(item => item.action === "use-sora") ? "openai-sora" : job.request.video_provider;
+}
+
 export function activeVideoOperations(job: MovieJob, provider: "Google Veo" | "OpenAI Sora") {
   const superseded = new Set((job.videoRecoveries ?? []).flatMap(item =>
     item.supersededOperationId ? [item.supersededOperationId] : []));
@@ -12,7 +16,7 @@ export function videoClipCount(job: MovieJob): 1 | 2 | 3 {
 
 export function savedVideoSegments(job: MovieJob): VideoSegment[] {
   const count = videoClipCount(job);
-  const provider = job.request.video_provider === "openai-sora" ? "OpenAI Sora" : "Google Veo";
+  const provider = activeVideoProvider(job) === "openai-sora" ? "OpenAI Sora" : "Google Veo";
   const operations = activeVideoOperations(job, provider);
   const saved = new Map<number, VideoSegment>();
   for (const segment of job.videoSegments ?? []) {

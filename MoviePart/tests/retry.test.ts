@@ -512,7 +512,7 @@ test("continuity recovery replaces only the rejected Veo segment twice, then per
   });
   assert.deepEqual(retrySummary(saved).videoRecovery, {
     replacementAttempts: 2, maxReplacementAttempts: 2, rejectedSegment: 2,
-    replacementAvailable: false, imageMotionAvailable: true,
+    replacementAvailable: false, soraFallbackAvailable: true, imageMotionAvailable: true,
   });
   await assert.rejects(
     f.store.retryOwned(f.job.id, ownerId, { ...action(2), video_recovery_action: "replace-rejected-clip" }, verifyNothing),

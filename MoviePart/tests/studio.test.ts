@@ -109,7 +109,7 @@ test("continuity recovery offers bounded paid replacement before explicit image-
       attempt: 0, eligible: true, approvedShots: 4, remainingShots: 0,
       videoRecovery: {
         replacementAttempts: 0, maxReplacementAttempts: 2, rejectedSegment: 2,
-        replacementAvailable: true, imageMotionAvailable: false,
+        replacementAvailable: true, soraFallbackAvailable: true, imageMotionAvailable: false,
       },
     },
   };
@@ -127,7 +127,7 @@ test("continuity recovery offers bounded paid replacement before explicit image-
       retry: {
         ...base.retry!, videoRecovery: {
           replacementAttempts: 2, maxReplacementAttempts: 2, rejectedSegment: 2,
-          replacementAvailable: false, imageMotionAvailable: true,
+          replacementAvailable: false, soraFallbackAvailable: true, imageMotionAvailable: true,
         },
       },
     },

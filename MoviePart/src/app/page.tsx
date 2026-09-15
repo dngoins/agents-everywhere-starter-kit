@@ -499,6 +499,11 @@ export default function MovieStudio() {
                 void retryMovie(false, "use-image-motion");
               }
             }}
+            onUseSora={() => {
+              if (window.confirm("Use Sora 2 Pro for a new complete animation sequence? This may incur additional OpenAI charges. The approved storyboard is retained, but prior Veo clips are not mixed into the Sora sequence.")) {
+                void retryMovie(false, "use-sora");
+              }
+            }}
             {...(job.productionMode === "movie-first" && !job.retry?.videoRecovery ? { onMakeMovie: () => void retryMovie(true) } : {})} />}
           {retryError && <div className="notice error" role="alert"><strong>Retry needs attention</strong><p>{retryError}</p><p>Retrying this request uses the same key; it does not automatically authorize a second attempt.</p><button className="text-button" onClick={() => { pendingRetry.current = null; setRetryError(""); setPollRevision(value => value + 1); }}>Refresh movie before a new retry decision</button></div>}
           {designerMessage && <div className="notice" role="status">{designerMessage}</div>}
