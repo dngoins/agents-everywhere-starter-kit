@@ -271,7 +271,8 @@ export default function KioskPage() {
       </div>
       <div className={styles.statusBar}>
         <span className={styles.cameraStatus} data-active={runtime.cameraActive}>{runtime.cameraActive ? "Camera on" : "Camera off"}</span>
-        {snapshot?.mode === "fixture" && <span>Synthetic fixture session</span>}
+        {active && <span>Robot session connected</span>}
+        {snapshot?.mode === "fixture" && <span>Fixture media mode - sample output only</span>}
         <span role="status">{{
           unavailable: "Motion not connected", requested: "Stop requested...",
           bridge_confirmed: "Bridge reports stopped; physical motion unverified", unconfirmed: "Stop unconfirmed - ask the operator",
