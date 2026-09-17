@@ -16,10 +16,10 @@
   isolation: isolate;
 }
 .kiosk :is(button, input, textarea, select, summary) { font: inherit; min-height: 48px; }
-.kiosk button { border: 1px solid #a8b7a0; border-radius: 7px; background: transparent; color: #f7f6f1; padding: 10px 16px; font-weight: 600; }
-.kiosk button:hover:not(:disabled) { background: #344439; }
+.kiosk button, .buttonLink { border: 1px solid #a8b7a0; border-radius: 7px; background: transparent; color: #f7f6f1; padding: 10px 16px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 48px; }
+.kiosk button:hover:not(:disabled), .buttonLink:hover { background: #344439; }
 .kiosk button:disabled { opacity: 1; color: #adbaa6; border-color: #677761; cursor: not-allowed; }
-.kiosk :is(button, input, textarea, select, summary, video):focus-visible { outline: 3px solid #d8ee93; outline-offset: 4px; }
+.kiosk :is(button, input, textarea, select, summary, video, a):focus-visible { outline: 3px solid #d8ee93; outline-offset: 4px; }
 .kiosk .primary { background: #d8ee93; border-color: #d8ee93; color: #202a25; }
 .kiosk .primary:hover:not(:disabled) { background: #e8f6b9; }
 .kiosk .stop { background: #f7f6f1; color: #202a25; border-color: #f7f6f1; font-size: 20px; padding-inline: 22px; }

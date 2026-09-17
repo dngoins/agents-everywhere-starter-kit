@@ -153,14 +153,14 @@ try {
     media: options.liveStudio ? "full creator studio worker" : options.liveMedia ? env.mediaOrigin : "synthetic mock fixture",
     pairingFile: resolve(root, ".runtime", "device-token"),
     operatorBootstrapFile: resolve(root, ".runtime", "showroom-operator-token"),
-    operatorBridge: options.windowsBridge ? `${env.uiOrigin}/robot-bridge` : "disabled",
+    operatorBridge: options.windowsBridge ? `${env.uiOrigin}/robot-bridge?apiPort=${options.apiPort}` : "disabled",
     capabilities: {
       studio: options.liveStudio, voice: options.liveVoice, calendar: options.googleCalendar, windowsBridge: options.windowsBridge,
     },
     mode: options.liveStudio ? "live-studio-opt-in" : options.liveMedia ? "live-media-opt-in" : "mock-film",
   }));
   if (env.publicOrigin !== env.uiOrigin) {
-    console.log("Configure and verify the trusted HTTPS proxy separately. This launcher does not start a tunnel or verify iPad certificate trust.");
+    console.log("Configure and verify the trusted HTTPS proxy separately when using a remote customer display. This launcher does not start a tunnel or verify tablet certificate trust.");
   }
   await stopped;
 } catch (error) {

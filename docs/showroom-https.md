@@ -1,9 +1,11 @@
-# Showroom HTTPS and operator deployment
+# Showroom tablet and operator deployment
 
-The iPad opens one trusted HTTPS origin. Its `/api/showroom` requests go to
-MoviePart, which forwards only the fixed routes below to FinalProject on
-loopback. The tablet never calls the laptop's `127.0.0.1`, receives a provider or
-operator master key, or connects directly to the robot's Bluetooth interface.
+A Windows showroom tablet can run `/kiosk` and, when physical movement is
+needed, the separate local `/robot-bridge` operator page for Web Bluetooth.
+`/api/showroom` requests go to MoviePart, which forwards only the fixed routes
+below to FinalProject on loopback. The tablet never receives a provider or
+operator master key; Bluetooth remains isolated behind the operator bridge page
+and its separate one-time role codes.
 
 This deployment layer does not itself implement the showroom lifecycle. Use
 the completed showroom backend/UI/runtime together. An unavailable backend,
@@ -59,8 +61,8 @@ generation has been exercised. Two minutes is a soft film target, not a timeout
 that converts unfinished work into success.
 
 The launcher reports the configured public URL but **does not create a tunnel,
-open firewall ports, install certificates, or verify iPad trust**. It starts no
-capture, provider generation, OAuth consent, invitation or Bluetooth pairing.
+open firewall ports, install certificates, or verify tablet trust**. It starts
+no capture, provider generation, OAuth consent, invitation or Bluetooth pairing.
 
 ## Secrets and process boundaries
 
@@ -73,8 +75,8 @@ existing `.env`. Launcher mode selection uses flags, not key presence.
 | FinalProject | Voice OpenAI key only with `--live-voice`; Google OAuth credentials only with `--google-calendar`; generated operator bootstrap key; studio machine token only with `--live-studio` |
 | MoviePart web + studio worker | MoviePart OpenAI/Google video keys and persistent private `MOVIE_API_TOKEN`, only with `--live-studio` |
 | Legacy media service | MoviePart OpenAI image key and generated media-service token, only with `--live-media` |
-| iPad browser | One authoritative session capability held in memory after one-time code exchange |
-| Local bridge browser | Redeemed short-lived operator/bridge role credentials held in memory, not the bootstrap key |
+| Windows tablet kiosk browser | One authoritative session capability held in memory after one-time code exchange |
+| Windows tablet bridge browser | Redeemed short-lived operator/bridge role credentials held in memory, not the bootstrap key; Web Bluetooth is available only on the local operator page |
 
 Inherited environment variables are allowlisted to operating-system essentials.
 Arbitrary `NEXT_PUBLIC_*`, provider settings, proxy credentials and unrelated
@@ -87,7 +89,7 @@ themselves.
 
 The launcher writes `.runtime/showroom-operator-token` for local operator
 bootstrap and retains `.runtime/device-token` for the legacy developer harness.
-Neither file is an iPad pairing code. Restrict `.runtime` and private provider
+Neither file is a showroom pairing code. Restrict `.runtime` and private provider
 state to the operator's Windows account using NTFS ACLs; POSIX `0600` is not an
 NTFS security boundary.
 
@@ -116,19 +118,25 @@ disconnected account is silently converted into a successful booking. Confirm
 recipient and time before an invitation. Keep OAuth callback routes local and
 out of access logs.
 
-## Trusted HTTPS for the iPad
+## Windows tablet deployment
 
-Choose either a domain with a publicly trusted certificate or a managed private
-CA installed and explicitly trusted on the iPad. A Windows-trusted certificate
-is **not automatically trusted by iPadOS**. Do not bypass TLS errors.
+For the intended Windows tablet, prefer loopback: open
+`http://127.0.0.1:<ui-port>/kiosk` for the showroom face and
+`http://127.0.0.1:<ui-port>/robot-bridge?apiPort=<api-port>` for Bluetooth
+setup. Chrome and Edge treat loopback as a secure context for Web Bluetooth.
+Public, LAN and tunnel origins are intentionally rejected by the bridge
+controller.
+
+If the customer display is on a separate device, choose either a domain with a
+publicly trusted certificate or a managed private CA installed and explicitly
+trusted on that tablet. Do not bypass TLS errors.
 
 ### LAN reverse proxy
 
-Use a hostname the iPad resolves to the operator machine. Install a valid
+Use a hostname the customer tablet resolves to the operator machine. Install a valid
 certificate for that hostname on a TLS reverse proxy such as Caddy. For a
-private CA, distribute only the CA certificate (never its private key), install
-the profile on the iPad, and enable full trust in Settings > General > About >
-Certificate Trust Settings, subject to the organization's device policy.
+private CA, distribute only the CA certificate, never its private key, and trust
+it using the organization's device policy.
 
 Example Caddy routing policy for port 3202:
 
@@ -168,9 +176,9 @@ origin in `--public-origin`. A changing hostname requires updating this exact
 origin and restarting the owned stack. Do not use wildcard CORS as a shortcut.
 No tunnel is started by the launcher.
 
-From the iPad, verify the expected hostname/certificate, load `/kiosk`, then
-confirm camera and microphone permission prompts. Camera/voice are separate
-permissions from consent to upload photos. Confirm that `/robot-bridge`,
+From the tablet, verify the expected hostname/certificate when using a remote
+display, load `/kiosk`, then confirm camera and microphone permission prompts.
+Camera/voice are separate permissions from consent to upload photos. Confirm that `/robot-bridge`,
 `/api/movie-config` and `/api/showroom/v1/operator/kiosk-pairings` are denied on
 the public origin before a customer encounter.
 
@@ -229,7 +237,10 @@ new event ID is safe.
 
 ## Local Windows Chrome bridge
 
-Use `/robot-bridge` on the **loopback** UI, not the iPad/public hostname.
+Use `/robot-bridge` on the **loopback** UI, not a public or tunneled hostname.
+The integrated launcher prints `/robot-bridge?apiPort=<api-port>` when
+`--windows-bridge` is enabled, and `/kiosk` opens the same URL from its operator
+drawer when the bundle knows that local API port.
 The bridge client connects only to a validated loopback API port and fixed
 `ws://127.0.0.1:{port}/v1/bridges/{bridgeId}/connect`. Backend checks the exact
 local origin and a redeemed role credential in the first frame, never in the

@@ -3,7 +3,7 @@ import test from "node:test";
 import { GET } from "../src/app/kiosk/manifest.webmanifest/route";
 import { metadata, viewport } from "../src/app/kiosk/layout";
 
-test("the explicitly routed iPad manifest returns the correct MIME, scope and full-screen colors", async () => {
+test("the explicitly routed tablet manifest returns the correct MIME, scope and full-screen colors", async () => {
   const response = GET();
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Content-Type"), "application/manifest+json");

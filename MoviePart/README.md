@@ -9,7 +9,7 @@ Tiya's reference-led movie studio and showroom kiosk for MagicPitch. The creator
 | Surface | Local address | Authentication | Start |
 |---|---|---|---|
 | Creator studio | `http://127.0.0.1:3200/` | Local browser session or `MOVIE_API_TOKEN` | `npm run dev` plus `npm run worker` |
-| Showroom kiosk | `http://127.0.0.1:3200/kiosk` (desktop only) | One-time operator code, then in-memory session capability | Integrated launcher and trusted iPad HTTPS origin; see [setup](../docs/showroom-https.md) |
+| Showroom kiosk | `http://127.0.0.1:3200/kiosk` (Windows tablet/desktop) | One-time operator code, then in-memory session capability | Integrated launcher; use the same Windows tablet for the local Bluetooth bridge or a trusted HTTPS customer display; see [setup](../docs/showroom-https.md) |
 | Dwight-to-Tiya media service | `http://127.0.0.1:3201` | Server-only `MEDIA_SERVICE_TOKEN` | `npm run media-service` |
 
 The kiosk never calls the media service or receives a model/provider/service credential. A tablet on another device requires agreed authenticated LAN hosting, exact allowed origins, and trusted HTTPS for browser capture. These local URLs are not remotely deployed services.
@@ -21,7 +21,7 @@ The safe-area-aware shell fills the dynamic viewport in portrait and landscape.
 **Stop robot**, microphone mute, camera status and **End session** stay reachable,
 including during inline film playback. **Pause animation** is a separate operator
 control, never a physical stop. Use **Toggle fullscreen** where supported, or
-Safari's **Add to Home Screen** on iPad. No private session/media service worker
+Windows Chrome/Edge installation for kiosk mode. No private session/media service worker
 or browser-persisted capability is installed.
 
 After one-time operator pairing, the customer explicitly enables live microphone
@@ -44,12 +44,13 @@ activity. Movie approval freezes the references; later conversation never
 silently rerenders the movie. Run `npm run assets:showroom` once to prepare the
 local face, pose and WASM files before camera use.
 
-The iPad never calls Web Bluetooth. The Windows operator bridge must be armed
-with rear clearance, and the customer must approve a bounded reverse framing
-intent. Execution uses a newly measured local tracking sample after approval.
-The bridge owns pulse/cumulative caps and its watchdog. **Stop requested** is
-distinct from a fresh bridge stopped report, which still is not a physical
-hardware acknowledgement.
+The Windows tablet may use Web Bluetooth only on the separate local
+`/robot-bridge` operator page, opened from loopback Windows Chrome/Edge. The
+bridge must be paired, armed with rear clearance, and the customer must approve
+a bounded reverse framing intent. Execution uses a newly measured local tracking
+sample after approval. The bridge owns pulse/cumulative caps and its watchdog.
+**Stop requested** is distinct from a fresh bridge stopped report, which still
+is not a physical hardware acknowledgement.
 
 The fixed same-origin `/api/showroom` gateway uses the canonical
 [showroom-v1 contract](integration/dwight/showroom-v1/README.md). Playback is
@@ -69,8 +70,8 @@ snapshot still contains the old consent.
 The old `KioskController`, guide and local-demo narrator remain isolated for
 legacy callers and regression coverage; the active `/kiosk` does not use them.
 Tests use injected transports, media and fixtures, never a real camera, paid
-provider or hardware. Actual iPad/Safari permissions, voice and supervised
-hardware still require operator acceptance on the target devices.
+provider or hardware. Actual Windows tablet permissions, voice and supervised
+Bluetooth hardware still require operator acceptance on the target devices.
 
 The full studio API supports private orchestrator sessions without changing the creator UI or the separate dedicated media-service contract. Send `Authorization: Bearer MOVIE_API_TOKEN` and `x-movie-session-id` on **every** upload, job, receipt and asset request. The scope must contain 1-128 ASCII letters, digits, `_` or `-`; it partitions the machine principal. Browser cookies cannot select that scope. Keep the token server-side and use the existing loopback-only API.
 

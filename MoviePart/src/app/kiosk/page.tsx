@@ -41,6 +41,11 @@ export default function KioskPage() {
   const pending = controller.pending();
   const snapshot = state.snapshot;
   const active = state.connection === "active";
+  const bridgeParams = new URLSearchParams();
+  const bridgeApiPort = process.env.NEXT_PUBLIC_SHOWROOM_BRIDGE_API_PORT;
+  if (snapshot?.sessionId) bridgeParams.set("sessionId", snapshot.sessionId);
+  if (bridgeApiPort && /^\d{1,5}$/.test(bridgeApiPort)) bridgeParams.set("apiPort", bridgeApiPort);
+  const bridgeHref = `/robot-bridge${bridgeParams.size ? `?${bridgeParams.toString()}` : ""}`;
 
   function run(operation: Promise<unknown>) {
     void operation.catch(error => controller.reportError(error instanceof Error ? error.message : "The action could not be completed."));
@@ -77,8 +82,8 @@ export default function KioskPage() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else if (surface.current?.requestFullscreen) await surface.current.requestFullscreen();
-      else setFullscreenNote("This browser uses the full page. On iPad, choose Share, then Add to Home Screen to hide browser navigation.");
-    } catch { setFullscreenNote("Fullscreen wasn't available. The face still fills the page; Add to Home Screen is available on iPad."); }
+      else setFullscreenNote("This browser uses the full page. On Windows, install the app from the browser menu to hide navigation.");
+    } catch { setFullscreenNote("Fullscreen wasn't available. The face still fills the page; installing this app from Windows Chrome is still available."); }
   }
   async function play() {
     try { await video.current?.play(); controller.clearError(); }
@@ -194,7 +199,7 @@ export default function KioskPage() {
             </div>
             <div className={styles.drawerContent}>
               {drawer === "operator" && <>
-                <p>Enter the one-time code from the Windows operator bridge. This tablet never connects to Bluetooth directly.</p>
+                <p>Enter the one-time showroom code. On this Windows tablet, use the local Bluetooth bridge only from its operator page; motion remains disabled until the operator pairs the PadBot, redeems the separate codes and confirms rear clearance.</p>
                 <form autoComplete="off" onSubmit={event => {
                   event.preventDefault(); const code = pairingCode; setPairingCode("");
                   run(controller.pair(code).then(() => { if (controller.getState().connection === "active") closeDrawer(); }));
@@ -206,8 +211,9 @@ export default function KioskPage() {
                   <div className={styles.actions}><button className={styles.primary} disabled={state.connection === "connecting" || active}>Pair tablet</button></div>
                 </form>
                 <p className={styles.help}>The session capability stays in memory, never in a link or browser storage. Refreshing requires a new pairing code.</p>
-                <p className={styles.help}>Motion starts disabled. The operator must arm the Windows bridge and confirm rear clearance, and the customer must agree.</p>
+                <p className={styles.help}>Motion starts disabled. The customer must also agree before any bounded reverse framing can be requested.</p>
                 <div className={styles.actions}>
+                  <a className={styles.buttonLink} href={bridgeHref} target="_blank" rel="noreferrer">Open Windows Bluetooth bridge</a>
                   <button onClick={() => run(fullscreen())}>Toggle fullscreen</button>
                   <button aria-pressed={pausedAnimation} onClick={() => setPausedAnimation(value => !value)}>{pausedAnimation ? "Resume animation" : "Pause animation"}</button>
                 </div>
@@ -272,6 +278,7 @@ export default function KioskPage() {
           unavailable: "Motion not connected", requested: "Stop requested...",
           bridge_confirmed: "Bridge reports stopped; physical motion unverified", unconfirmed: "Stop unconfirmed - ask the operator",
         }[state.stopState]}</span>
+        <a className={styles.quiet} href={bridgeHref} target="_blank" rel="noreferrer">Bluetooth bridge</a>
         <button className={styles.quiet} onClick={() => openDrawer("operator")}>Operator</button>
       </div>
       <video ref={cameraVideo} className={styles.srOnly} muted playsInline aria-hidden="true" />
