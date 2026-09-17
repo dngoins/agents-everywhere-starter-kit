@@ -199,3 +199,7 @@ stale outputs from earlier builds.
 ## Project origin
 
 Built for the AI Tinkerers **Agents, Everywhere** hackathon in Miami by the Agent-RedHat team. The inherited starter remains under [OriginalRepo](OriginalRepo/README.md), including [event guidance](OriginalRepo/hackathon-overview.md), [rules](OriginalRepo/hackathon-rules.md), and [sponsor setup references](OriginalRepo/using-sponsor-tools.md). Those starter examples and integrations are not claims about what the Magic Pitch Robot currently executes.
+
+## Credits
+
+- **Edilma ([@edilma](https://github.com/edilma))** built the original MoviePart, including the first movie, its assets, and the uploaded video. Those original contributions are preserved in the commit history.
