@@ -52,6 +52,7 @@ test("offline kiosk mode isolates inherited credentials and configures the actua
   assert.equal(environment.api.SHOWROOM_MODE, "fixture");
   assert.equal(environment.ui.SHOWROOM_API_UPSTREAM, "http://127.0.0.1:3101");
   assert.equal(environment.ui.SHOWROOM_PUBLIC_ORIGIN, "http://127.0.0.1:3202");
+  assert.equal(environment.ui.NEXT_PUBLIC_SHOWROOM_BRIDGE_API_PORT, "3101");
   assert.equal(environment.ui.__NEXT_PROCESSED_ENV, "true");
   for (const env of [environment.api, environment.ui, environment.worker, environment.media]) {
     assert.equal(env.PATH, "test-path");
@@ -141,6 +142,7 @@ test("calendar and bridge opt-ins are independent and keep bootstrap/OAuth crede
   assert.equal(env.api.SHOWROOM_BRIDGE_ENABLED, "true");
   assert.equal(env.api.SHOWROOM_BRIDGE_ORIGINS, "http://127.0.0.1:3202");
   assert.equal(env.api.SHOWROOM_OPERATOR_TOKEN, "operator-private");
+  assert.equal(env.ui.NEXT_PUBLIC_SHOWROOM_BRIDGE_API_PORT, "3101");
   assert.equal(env.api.VOICE_ENABLED, "false");
   assert.equal(env.api.SHOWROOM_MODE, "fixture");
   for (const target of [env.ui, env.worker, env.media]) {

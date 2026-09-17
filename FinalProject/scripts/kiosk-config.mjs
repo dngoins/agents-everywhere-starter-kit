@@ -130,6 +130,7 @@ export function integrationEnvironments({
     // Next otherwise reloads MoviePart/.env and defeats offline secret isolation.
     __NEXT_PROCESSED_ENV: "true",
     SHOWROOM_API_UPSTREAM: apiOrigin, SHOWROOM_PUBLIC_ORIGIN: publicOrigin,
+    NEXT_PUBLIC_SHOWROOM_BRIDGE_API_PORT: String(options.apiPort),
   };
   const media = {
     ...common, ...blockedSecrets,

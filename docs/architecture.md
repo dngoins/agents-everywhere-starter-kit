@@ -409,8 +409,8 @@ Ready-result provenance is also distinct from encoding mode:
 ## 7. Deployment and completion boundaries
 
 - Default local ports are robot UI **5173**, robot development API **8787**, orchestrator **3101**, studio/kiosk **3200**, and media service **3201**.
-- The iPad uses one trusted HTTPS origin and `/api/showroom`; all service ports remain loopback. Exact origins, certificate trust and a restricted proxy must be configured explicitly. Do not expose studio/operator/OAuth/bridge-control routes with a bare tunnel.
-- The standalone RobotPart keeps its own prerecorded/mock-booking demo. The showroom reuses its Live/vision/PadBot modules with one FinalProject session and a separate Windows operator page; iPad Web Bluetooth is not assumed.
+- The Windows showroom tablet uses `/kiosk` and one fixed same-origin `/api/showroom`; all service ports remain loopback. A separate customer display still needs exact origins, certificate trust and a restricted proxy configured explicitly. Do not expose studio/operator/OAuth/bridge-control routes with a bare tunnel.
+- The standalone RobotPart keeps its own prerecorded/mock-booking demo. The showroom reuses its Live/vision/PadBot modules with one FinalProject session and a separate loopback Windows operator page for Web Bluetooth; public or tunneled origins cannot control the robot.
 - `demo-car-v1` remains a legacy synthetic contract. Real-vehicle showroom orchestration uses the separate immutable studio contract, not a synthetic-product alias.
 - Calendar execution is implemented under `FinalProject/src/calendar`; Google OAuth and invitations are independent opt-ins. ResearchSocialMediaPart and OfficeCalendarPart remain original workstream folders.
 - No distributed queue, cloud deployment, live account access or confirmed invitation delivery is asserted by these diagrams.
