@@ -70,6 +70,7 @@ See the [detailed design](docs/architecture.md) for sequence diagrams, job lifec
 | [RobotPart](RobotPart/README.md) - Damian | Tablet UI, local MediaPipe face detection, PadBot BLE control, voice conversation, and showroom workflow | Standalone demo serves a prerecorded MP4 and mock test-drive booking. Its existing capture flow is not automatically the orchestrator's consent flow. |
 | [FinalProject](FinalProject/README.md) - Dwight | One-time pairing, authoritative showroom, revision-bound approvals, studio lifecycle, Live SDP setup, scoped bridge intents, calendar and revocation | Explicit fixture/studio modes; independent voice/calendar/bridge opt-ins; legacy roster/brief API preserved |
 | [MoviePart](MoviePart/README.md) - Tiya | Creator studio and worker, portrait kiosk, local face/pose capture, fixed gateway, Windows operator page, and legacy media service | One shared session through the private orchestrator; real-vehicle studio and legacy synthetic-concept media contracts remain distinct |
+| Original MoviePart - [Edilma](https://github.com/edilma) | Original MoviePart, including the first movie, its assets, and the uploaded video | Original contributions are preserved in the commit history |
 | [ResearchSocialMediaPart](ResearchSocialMediaPart/README.md) | Reserved workstream for permitted enrichment | Folder is a placeholder. The implemented optional Exa adapter lives in FinalProject and uses an explicitly supplied profile URL. |
 | [OfficeCalendarPart](OfficeCalendarPart/README.md) | Original reserved CRM/calendar workstream | Implementation now lives in `FinalProject/src/calendar`; Google OAuth and confirmed invitations remain explicitly opt-in |
 | [OriginalRepo](OriginalRepo/README.md) | Inherited Agents, Everywhere starter kit | Reference material and original examples, not the Magic Pitch Robot runtime |
@@ -199,7 +200,3 @@ stale outputs from earlier builds.
 ## Project origin
 
 Built for the AI Tinkerers **Agents, Everywhere** hackathon in Miami by the Agent-RedHat team. The inherited starter remains under [OriginalRepo](OriginalRepo/README.md), including [event guidance](OriginalRepo/hackathon-overview.md), [rules](OriginalRepo/hackathon-rules.md), and [sponsor setup references](OriginalRepo/using-sponsor-tools.md). Those starter examples and integrations are not claims about what the Magic Pitch Robot currently executes.
-
-## Credits
-
-- **Edilma ([@edilma](https://github.com/edilma))** built the original MoviePart, including the first movie, its assets, and the uploaded video. Those original contributions are preserved in the commit history.
